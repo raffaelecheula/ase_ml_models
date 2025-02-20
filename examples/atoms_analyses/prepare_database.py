@@ -12,6 +12,7 @@ from ase_ml_models.utilities import get_connectivity, plot_connectivity
 from ase_ml_models.features import (
     get_features_const,
     get_features_soap,
+    get_features_bands,
     write_features,
 )
 
