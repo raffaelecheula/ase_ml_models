@@ -24,24 +24,16 @@ def main():
     # Adsorbate.
     ads = molecule("CO")
     ads.translate(atoms.positions[28]-ads.positions[1]+[0., 0., 1.80])
-    #ads.translate(atoms.positions[31]-ads.positions[1]+[0., 0., 1.80])
     atoms += ads
-    indices_ads = [36, 37]
-    # Parameters.
-    method = "ase"
-    bond_cutoff = 2
+    atoms.info["indices_ads"] = [36, 37]
     # Get reduced graph atoms.
     atoms = get_reduced_graph_atoms(
         atoms=atoms,
-        indices_ads=indices_ads,
-        method=method,
-        bond_cutoff=bond_cutoff,
+        method="ase",
+        bond_cutoff=2,
     )
-    ## Plot connectivity.
-    plot_connectivity(
-        atoms=atoms,
-        connectivity=atoms.info["connectivity"],
-    )
+    # Plot connectivity.
+    plot_connectivity(atoms=atoms)
 
 # -------------------------------------------------------------------------------------
 # IF NAME MAIN

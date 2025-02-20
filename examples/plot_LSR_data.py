@@ -9,13 +9,15 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import MultipleLocator
 from adjustText import adjust_text
 from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_absolute_error, mean_squared_error
 
-from ase_ml_models.databases import get_atoms_list_from_db
+from ase_ml_models.databases import get_atoms_list_from_db, get_atoms_most_stable
 from ase_ml_models.linear import (
     get_correlation_heatmap,
     lsr_prepare,
     get_lsr_data_dict,
     get_lsr_models_dict,
+    lsr_predict,
 )
 from ase_ml_models.utilities import modify_name
 
@@ -28,7 +30,7 @@ def main():
     # Ase database.
     db_ase_name = "atoms_adsorbates_DFT.db"
     most_stable = True
-    material_labels = True
+    material_labels = False
     time_lim = 100
     get_heatmap = False
     
@@ -36,7 +38,14 @@ def main():
     db_ase = connect(db_ase_name)
     kwargs = {"most_stable": True} if most_stable is True else {}
     atoms_list = get_atoms_list_from_db(db_ase=db_ase, **kwargs)
-
+    
+    ## Get the most stable structures.
+    #keys_most_stable = ["species", "surface", "site"]
+    #atoms_list = get_atoms_most_stable(
+    #    atoms_list=atoms_list,
+    #    keys_most_stable=keys_most_stable,
+    #)
+    
     # Colors for the different classes.
     colors_dict = {
         "100 metal": "crimson",
@@ -63,7 +72,7 @@ def main():
     os.makedirs("images/LSR", exist_ok=True)
     if get_heatmap is True:
         ax = get_correlation_heatmap(atoms_list=atoms_list)
-        plt.subplots_adjust(left=0.15, right=0.90, top=0.90, bottom=0.20)
+        plt.subplots_adjust(left=0.15, right=0.90, bottom=0.20, top=0.90)
         plt.savefig(f"images/LSR/correlation_heatmap.png", dpi=300)
     # Get the data for the LSR relations.
     lsr_data_all_dict = get_lsr_data_dict(atoms_train=atoms_list)
@@ -82,7 +91,11 @@ def main():
         # Get the LSR model.
         models_dict = get_lsr_models_dict(lsr_data_dict=lsr_data_dict)
         # Prepare the plot.
-        fig, ax = plt.subplots(figsize=(8, 8))
+        if material_labels is True:
+            fig, ax = plt.subplots(figsize=(8, 8))
+        else:
+            fig, ax = plt.subplots(figsize=(5, 5), dpi=300)
+            plt.subplots_adjust(left=0.20, right=0.90, bottom=0.20, top=0.90)
         title = modify_name(species, replace_dict={})
         ax.set_title(title, fontdict={"fontsize": 20})
         species_x = modify_name(fixed_LSR[species][0], replace_dict={})
@@ -98,8 +111,9 @@ def main():
         surface_all_list = lsr_data_all_dict[species]["surface"]
         ax.set_xlim(min(e_lsr_all_list)-0.5, max(e_lsr_all_list)+0.5)
         ax.set_ylim(min(e_form_all_list)-0.5, max(e_form_all_list)+0.5)
-        ax.xaxis.set_major_locator(MultipleLocator(0.5))
-        ax.yaxis.set_major_locator(MultipleLocator(0.5))
+        #base = 0.5 if material_labels is True else 1.0
+        #ax.xaxis.set_major_locator(MultipleLocator(base=base))
+        #ax.yaxis.set_major_locator(MultipleLocator(base=base))
         # Plot the results.
         texts = []
         for ii, key in enumerate(models_dict):
@@ -125,6 +139,18 @@ def main():
             color="grey",
             zorder=0,
         )
+        y_test = [atoms.info["E_form"] for atoms in atoms_spec]
+        y_pred = lsr_predict(
+            atoms_test=atoms_spec,
+            models_dict=models_all_dict,
+        )
+        # Calculate the MAE and the RMSE.
+        mae = mean_absolute_error(y_test, y_pred)
+        rmse = mean_squared_error(y_test, y_pred, squared=False)
+        print(f"Species {species}")
+        print(f"TOT MAE:   {mae:7.4f} [eV]")
+        print(f"TOT RMSE:  {rmse:7.4f} [eV]")
+        
         if material_labels is True:
             # Add text.
             for xx, yy, name in zip(e_lsr_all_list, e_form_all_list, surface_all_list):

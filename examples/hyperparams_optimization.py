@@ -31,10 +31,9 @@ def main():
     crossval_name = "StratifiedGroupKFold" # StratifiedKFold | StratifiedGroupKFold
     key_groups = "material"
     key_stratify = "species"
-    n_splits = 5
+    n_splits = 3
     random_state = 42
     most_stable = False
-    ensemble = False
     # Model parameters.
     model_name = "WWLGPR" # LSR | BEP | SKLearn | WWLGPR
     update_features = True
@@ -48,15 +47,6 @@ def main():
     }
     add_ref_atoms = True
     species_ref = ["CO*", "H*", "O*"]
-    fixed_LSR = {
-        "CO2*": ["CO*"],
-        "COH*": ["CO*"],
-        "cCOOH*": ["CO*"],
-        "H2O*": ["CO*"],
-        "HCO*": ["CO*"],
-        "HCOO*": ["O*"],
-        "OH*": ["O*"],
-    }
     
     # Read Ase database.
     db_ase_name = f"atoms_{species_type}_DFT.db"
@@ -79,32 +69,54 @@ def main():
         atoms_add = get_atoms_ref(atoms_list=atoms_list, species_ref=species_ref)
     else:
         atoms_add = []
-    # Preprocess the data.
-    if model_name == "LSR":
-        from ase_ml_models.linear import lsr_prepare
-        lsr_prepare(
-            atoms_list=atoms_list+atoms_add,
-            species_LSR=species_ref,
-            fixed_LSR=fixed_LSR,
-        )
-    elif model_name == "SKLearn":
+    if model_name == "SKLearn":
         from ase_ml_models.sklearn import sklearn_preprocess
         sklearn_preprocess(atoms_list=atoms_list+atoms_add)
-    # Prepare Ase database.
-    db_model = connect(f"atoms_{species_type}_{model_name}.db", append=False)
-    # Cross-validation.
-    if ensemble is True:
-        results = ensemble_crossvalidation(
-            atoms_list=atoms_list,
-            model_name=model_name,
-            crossval=crossval,
-            key_groups=key_groups,
-            key_stratify=key_stratify,
-            atoms_add=atoms_add,
-            db_model=db_model,
-            model_params=model_params_dict[model_name],
-        )
-    else:
+    
+    num_samples = 100
+    np.random.seed(random_state)
+    
+    model_SKLearn = "LGBMRegressor"
+    
+    if model_name == "SKLearn" and model_SKLearn == "LGBMRegressor":
+        from lightgbm import LGBMRegressor
+        model_params_dict["SKLearn"]["model"] = LGBMRegressor()
+        hyperparams_fixed = {
+            "max_bin": int(np.exp(10)),
+            "verbose": -1,
+        }
+        hyperparams_scan = {
+            "n_estimators": np.random.randint(100, 1000, num_samples),
+            "num_leaves": np.random.randint(3, 20, num_samples),
+            "min_child_samples": np.random.randint(1, 10, num_samples),
+            "learning_rate": np.random.uniform(0.0001, 0.01, num_samples),
+            "colsample_bytree": np.random.uniform(0.01, 1., num_samples),
+            "reg_alpha": np.random.uniform(0.0001, 0.1, num_samples),
+            "reg_lambda": np.random.uniform(0.0001, 0.1, num_samples),
+        }
+
+    if model_name == "WWLGPR":
+        hyperparams_fixed = {
+            "cutoff": 2,
+            "inner_cutoff": 1,
+            "gpr_sigma": 1,
+        }
+        hyperparams_scan = {
+            "inner_weight": np.random.uniform(0.5, 1.0, num_samples),
+            "outer_weight": np.random.uniform(0.0, 0.5, num_samples),
+            "gpr_reg": np.random.uniform(0.001, 0.010, num_samples),
+            "gpr_len": np.random.uniform(1., 100., num_samples),
+            "edge_s_s": np.random.uniform(0.0, 1.0, num_samples),
+            "edge_s_a": np.random.uniform(0.5, 1.0, num_samples),
+            "edge_a_a": np.random.uniform(0.0, 1.0, num_samples),
+        }
+    
+    hyperparams_dict = {}
+    for ii in range(num_samples):
+        hyperparams = {key: hyperparams_scan[key][ii] for key in hyperparams_scan}
+        hyperparams.update(hyperparams_fixed)
+        model_params_dict[model_name]["hyperparams"] = hyperparams
+        # Cross-validation.
         results = crossvalidation(
             atoms_list=atoms_list,
             model_name=model_name,
@@ -112,25 +124,18 @@ def main():
             key_groups=key_groups,
             key_stratify=key_stratify,
             atoms_add=atoms_add,
-            db_model=db_model,
+            db_model=None,
             model_params=model_params_dict[model_name],
+            print_error_thr=np.inf,
         )
-    y_test = results["y_test"]
-    y_pred = results["y_pred"]
-    # Calculate the MAE and the RMSE.
-    mae = mean_absolute_error(y_test, y_pred)
-    rmse = mean_squared_error(y_test, y_pred, squared=False)
-    print("Average results:")
-    print(f"TOT MAE:   {mae:7.4f} [eV]")
-    print(f"TOT RMSE:  {rmse:7.4f} [eV]")
-    # Parity plot.
-    os.makedirs("images/plots", exist_ok=True)
-    lims = [-2.2, +3.2] if species_type == "adsorbates" else [-1.4, +5.2]
-    ax = parity_plot(results=results, lims=lims)
-    plt.savefig(f"images/plots/parity_{species_type}_{model_name}.png")
-    # Violin plot.
-    ax = violin_plot(results=results)
-    plt.savefig(f"images/plots/violin_{species_type}_{model_name}.png")
+        y_test = results["y_test"]
+        y_pred = results["y_pred"]
+        # Calculate the MAE and the RMSE.
+        mae = mean_absolute_error(y_test, y_pred)
+        rmse = mean_squared_error(y_test, y_pred, squared=False)
+        print("Average results:")
+        print(f"TOT MAE:   {mae:7.4f} [eV]")
+        print(f"TOT RMSE:  {rmse:7.4f} [eV]")
 
 # -------------------------------------------------------------------------------------
 # IF NAME MAIN

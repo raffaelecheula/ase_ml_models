@@ -23,7 +23,7 @@ def main():
     # Ase database.
     db_ase_name = "atoms_reactions_DFT.db"
     most_stable = True
-    material_labels = True
+    material_labels = False
     time_lim = 100
     
     # Read Ase database.
@@ -72,7 +72,11 @@ def main():
         # Get BEP model.
         models_dict = get_bep_models_dict(bep_data_dict=bep_data_dict)
         # Prepare the plot.
-        fig, ax = plt.subplots(figsize=(8, 8))
+        if material_labels is True:
+            fig, ax = plt.subplots(figsize=(8, 8))
+        else:
+            fig, ax = plt.subplots(figsize=(5, 5), dpi=300)
+            plt.subplots_adjust(left=0.20, right=0.90, bottom=0.20, top=0.90)
         title = modify_name(species, replace_dict={})
         ax.set_title(title, fontdict={"fontsize": 20})
         ax.set_xlabel("ΔE$_{react}$ [eV]", fontdict={"fontsize": 16})
@@ -84,8 +88,9 @@ def main():
         surface_all_list = bep_data_all_dict[species]["surface"]
         ax.set_xlim(min(deltae_all_list)-0.5, max(deltae_all_list)+0.5)
         ax.set_ylim(min(e_act_all_list)-0.5, max(e_act_all_list)+0.5)
-        ax.xaxis.set_major_locator(MultipleLocator(0.5))
-        ax.yaxis.set_major_locator(MultipleLocator(0.5))
+        #base = 1.0 if material_labels is False and species == "CO2*→CO*+O*" else 0.5
+        #ax.xaxis.set_major_locator(MultipleLocator(base=base))
+        #ax.yaxis.set_major_locator(MultipleLocator(base=base))
         # Plot the results.
         texts = []
         for ii, key in enumerate(models_dict):

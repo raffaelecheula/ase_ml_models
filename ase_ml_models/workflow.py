@@ -98,6 +98,8 @@ def crossvalidation(
     # Get groups and stratify for splits.
     groups = [atoms.info[key_groups] for atoms in atoms_list]
     stratify = [atoms.info[key_stratify] for atoms in atoms_list]
+    # Names of atoms added.
+    atoms_add_names = [atoms.info["name"] for atoms in atoms_add]
     # Initialize cross-validation.
     indices = list(range(len(atoms_list)))
     y_test_all = []
@@ -121,7 +123,12 @@ def crossvalidation(
         )
         y_pred = results["y_pred"]
         # Store the results in the ase database.
-        for atoms, e_form, e_form_dft in zip(atoms_test, y_pred, y_test):
+        add_indices = []
+        for kk, atoms in enumerate(atoms_test):
+            e_form = y_pred[kk]
+            e_form_dft = y_test[kk]
+            if atoms.info["name"] in atoms_add_names:
+                add_indices.append(kk)
             if db_model is not None:
                 atoms_copy = atoms.copy()
                 atoms_copy.info = atoms.info.copy()
@@ -132,8 +139,8 @@ def crossvalidation(
             if np.abs(e_form-e_form_dft) > print_error_thr:
                 print(f"{atoms.info['name']:70s} {e_form:+7.3f} {e_form_dft:+7.3f}")
         # Store the results in lists.
-        y_test_all += y_test
-        y_pred_all += y_pred
+        y_test_all += [yy for kk, yy in enumerate(y_test) if kk not in add_indices]
+        y_pred_all += [yy for kk, yy in enumerate(y_pred) if kk not in add_indices]
         y_err_all += list(np.abs(np.array(y_pred)-np.array(y_test)))
     # Return the results.
     results = {
@@ -163,6 +170,8 @@ def ensemble_crossvalidation(
     # Get groups and stratify for splits.
     groups = [atoms.info[key_groups] for atoms in atoms_list]
     stratify = [atoms.info[key_stratify] for atoms in atoms_list]
+    # Names of atoms added.
+    atoms_add_names = [atoms.info["name"] for atoms in atoms_add]
     # Initialize cross-validation.
     indices = list(range(len(atoms_list)))
     y_test_all = []
@@ -181,6 +190,8 @@ def ensemble_crossvalidation(
         # Split the test data.
         stratify_ii = [atoms.info[key_stratify] for atoms in atoms_train]
         groups_ii = [atoms.info[key_groups] for atoms in atoms_train]
+        if ii == 0:
+            crossval.n_splits -= 1
         for jj, (indices_train_jj, indices_test_jj) in enumerate(
             crossval.split(X=indices_train, y=stratify_ii, groups=groups_ii)
         ):
@@ -201,10 +212,13 @@ def ensemble_crossvalidation(
         y_std = list(np.std(y_pred_list, axis=0))
         # Store the results in the ase database.
         y_pred_array = np.array(y_pred_list)
-        for ii, atoms in enumerate(atoms_test):
-            e_form = y_pred[ii]
-            e_form_list = y_pred_array[:, ii]
-            e_form_dft = y_test[ii]
+        add_indices = []
+        for kk, atoms in enumerate(atoms_test):
+            e_form = y_pred[kk]
+            e_form_list = y_pred_array[:, kk]
+            e_form_dft = y_test[kk]
+            if atoms.info["name"] in atoms_add_names:
+                add_indices.append(kk)
             if db_model is not None:
                 atoms_copy = atoms.copy()
                 atoms_copy.info = atoms.info.copy()
@@ -216,10 +230,10 @@ def ensemble_crossvalidation(
             if np.abs(e_form-e_form_dft) > print_error_thr:
                 print(f"{atoms.info['name']:70s} {e_form:+7.3f} {e_form_dft:+7.3f}")
         # Store the results in lists.
-        y_test_all += y_test
-        y_pred_all += y_pred
+        y_test_all += [yy for kk, yy in enumerate(y_test) if kk not in add_indices]
+        y_pred_all += [yy for kk, yy in enumerate(y_pred) if kk not in add_indices]
         y_err_all += list(np.abs(np.array(y_pred)-np.array(y_test)))
-        y_std_all += y_std
+        y_std_all += [yy for kk, yy in enumerate(y_std) if kk not in add_indices]
     # Return the results.
     results = {
         "y_test": y_test_all,
@@ -340,6 +354,8 @@ def parity_plot(
     lims: list = [-3, +5],
     alpha: float = 0.3,
     color: str = "crimson",
+    show_errors: bool = True,
+    add_violin_plot: bool = True,
 ) -> object:
     """Parity plot of the results."""
     if ax is None:
@@ -371,6 +387,37 @@ def parity_plot(
     ax.tick_params(labelsize=13, width=1.5, length=6, direction="inout")
     for spine in ax.spines.values():
         spine.set_linewidth(1.5)
+    # Calculate the MAE and the RMSE.
+    if show_errors is True:
+        y_test = results["y_test"]
+        y_pred = results["y_pred"]
+        from sklearn.metrics import mean_absolute_error, mean_squared_error
+        mae = mean_absolute_error(y_test, y_pred)
+        rmse = mean_squared_error(y_test, y_pred, squared=False)
+        ax.text(
+            x=lims[0]+(lims[1]-lims[0])*0.19,
+            y=lims[0]+(lims[1]-lims[0])*0.92,
+            s=f"MAE = {mae:6.3f} [eV]\nRMSE = {rmse:6.3f} [eV]",
+            fontsize=13,
+            ha='center',
+            va='center',
+            bbox={
+                "boxstyle": 'round,pad=0.5',
+                "edgecolor": 'black',
+                "facecolor": 'white',
+                "linewidth": 1.5,
+            },
+        )
+    # Add violin plot.
+    if add_violin_plot is True:
+        inset_ax = fig.add_axes([0.70, 0.13, 0.18, 0.25])
+        violin_plot(
+            results=results,
+            ax=inset_ax,
+            ylim=[0., +1.5],
+            alpha=0.8,
+            color=color,
+        )
     return ax
 
 # -------------------------------------------------------------------------------------

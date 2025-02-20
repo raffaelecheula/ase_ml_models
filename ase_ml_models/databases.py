@@ -101,5 +101,25 @@ def get_atoms_from_db(
     return atoms_list[0]
 
 # -------------------------------------------------------------------------------------
+# GET ATOMS MOST STABLE
+# -------------------------------------------------------------------------------------
+
+def get_atoms_most_stable(
+    atoms_list: list,
+    keys_most_stable: list,
+) -> list:
+    """Get most stable atoms between the ones with the same keys."""
+    stable_dict = {}
+    for atoms in atoms_list:
+        key = " ".join([atoms.info[key] for key in keys_most_stable])
+        if (
+            key not in stable_dict 
+            or atoms.info["E_form"] < stable_dict[key].info["E_form"]
+        ):
+            stable_dict[key] = atoms
+    atoms_list = list(stable_dict.values())
+    return atoms_list
+
+# -------------------------------------------------------------------------------------
 # END
 # -------------------------------------------------------------------------------------

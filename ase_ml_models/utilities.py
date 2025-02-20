@@ -164,7 +164,7 @@ def ensure_bonding_ads_surf(
 
 def plot_connectivity(
     atoms: Atoms,
-    connectivity: np.ndarray,
+    connectivity: np.ndarray = None,
     edges_pbc: bool = False,
     show_plot: bool = True,
     show_axis: bool = False,
@@ -176,6 +176,8 @@ def plot_connectivity(
     from ase.data import covalent_radii
     from ase.data.colors import jmol_colors
     # Get edges list.
+    if connectivity is None:
+        connectivity = atoms.info["connectivity"]
     edges_list = get_edges_list_from_connectivity(connectivity=connectivity)
     # Delete edges from pbc.
     if edges_pbc is False:
@@ -274,11 +276,13 @@ def get_indices_from_bond_cutoff(
 
 def get_reduced_graph_atoms(
     atoms: Atoms,
-    indices_ads: list,
+    indices_ads: list = None,
     method: str = "ase",
     bond_cutoff: int = 2,
 ):
     """Get the reduced graph atoms."""
+    if indices_ads is None:
+        indices_ads = atoms.info["indices_ads"]
     atoms_enlarged = enlarge_surface(atoms=atoms)
     connectivity = get_connectivity(
         atoms=atoms_enlarged,
