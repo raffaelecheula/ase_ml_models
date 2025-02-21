@@ -4,20 +4,19 @@
 
 import os
 import numpy as np
-from igraph import Graph
-from wwlgpr.WWL_GPR import BayOptCv
 
 # -------------------------------------------------------------------------------------
 # WWL-GPR HYPERPARAMETERS
 # -------------------------------------------------------------------------------------
 
 def optimize_hyperpars_wwlgpr(
-    model: BayOptCv,
+    model: object,
     n_calls: int = 100,
 ):
     """Set the hyperparameters for the WWL-GPR model."""
     import ray
     from skopt.space import Real, Integer
+    from wwlgpr.WWL_GPR import BayOptCv
     ray.shutdown()
     ray.init()
     print("Nodes in the Ray cluster:", ray.nodes())
@@ -108,6 +107,9 @@ def wwlgpr_train(
     optimize_hyperpars: bool = False,
     n_calls: int = 100,
 ):
+    """Train the WWL-GPR model."""
+    from igraph import Graph
+    from wwlgpr.WWL_GPR import BayOptCv
     train_db_graphs = [
         Graph.Adjacency(atoms.info["connectivity"]) for atoms in atoms_train
     ]
@@ -138,10 +140,12 @@ def wwlgpr_train(
 
 def wwlgpr_predict(
     atoms_test: list,
-    model: BayOptCv,
+    model: object,
     opt_hypers: dict = {},
     target: str = "E_form",
 ):
+    """Predict the energies using the WWL-GPR model."""
+    from igraph import Graph
     test_graphs = [
         Graph.Adjacency(atoms.info["connectivity"]) for atoms in atoms_test
     ]
