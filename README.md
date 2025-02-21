@@ -12,7 +12,7 @@ To install `ase_ml_models`, clone the repository and install the package using `
 ```bash
 git clone https://github.com/raffaelecheula/ase_ml_models.git
 cd ase_ml_models
-pip install .
+pip install -e .
 ```
 
 Requirements:
