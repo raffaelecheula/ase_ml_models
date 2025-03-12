@@ -32,11 +32,12 @@ def main(
     material='Rh',
     miller_index='100',
     e_index=None,
+    extrapolation=False,
 ):
 
     # Models parameters.
-    model_adsorbates = "WWLGPR" # DFT | LSR | WWLGPR
-    model_reactions = "WWLGPR" # DFT | BEP | WWLGPR
+    model_adsorbates = "SKLearn" # DFT | TSR | SKLearn | WWLGPR
+    model_reactions = "SKLearn" # DFT | BEP | SKLearn | WWLGPR
 
     # Analysis parameters.
     calculate_DRC = False
@@ -76,8 +77,12 @@ def main(
 
     # Reaction mechanism parameters.
     yaml_file = 'mechanism.yaml'
-    db_ads_name = f"atoms_adsorbates_{model_adsorbates}.db"
-    db_ts_name = f"atoms_reactions_{model_reactions}.db"
+    if extrapolation is True:
+        db_ads_name = f"atoms_adsorbates_{model_adsorbates}_extra.db"
+        db_ts_name = f"atoms_reactions_{model_reactions}_extra.db"
+    else:
+        db_ads_name = f"atoms_adsorbates_{model_adsorbates}.db"
+        db_ts_name = f"atoms_reactions_{model_reactions}.db"
     
     # Formations energies.
     db_ads = connect(db_ads_name)
@@ -115,6 +120,11 @@ def main(
     cat.TP = temperature, pressure
     cat.coverages = cat_coverages_inlet
     cat_ts.TP = temperature, pressure
+    
+    # Calculate gas space velocity.
+    molar_flow_rate = vol_flow_rate*gas.density/gas.mean_molecular_weight # [kmol/s]
+    cat_moles = cat_site_density*alpha_cat*reactor_volume # [kmol]
+    gas_space_velocity = molar_flow_rate/cat_moles # [1/s]
 
     # Update the reactions from the transition states.
     reactions_from_cat_ts(gas=gas, cat=cat, cat_ts=cat_ts)
@@ -234,7 +244,7 @@ def main(
         print(f'Sum DRC = {sum_DRC:+7.4f}')
 
     # Store results in dictionary.
-    yaml_results = "results.yaml"
+    yaml_results = 'results_extra.yaml' if extrapolation is True else 'results.yaml'
     if os.path.isfile(yaml_results):
         with open(yaml_results, 'r') as fileobj:
             results_all = yaml.safe_load(fileobj)
@@ -269,7 +279,7 @@ def main(
         return yaml.representer.SafeRepresenter.represent_dict(dumper, data.items())
     yaml.add_representer(dict, dict_representer)
     # Write the reaction mechanism.
-    with open('results.yaml', 'w') as fileobj:
+    with open(yaml_results, 'w') as fileobj:
         yaml.dump(
             data=results_all,
             stream=fileobj,
@@ -284,39 +294,84 @@ def main(
 
 if __name__ == '__main__':
     start = timeit.default_timer()
+    # Parameters.
+    extrapolation = True
+    ensemble = True
     # Materials.
-    material_list = [
-        'Rh',
-        'Pd',
-        'Co',
-        'Ni',
-        'Cu',
-        'Au',
-        'Rh+Pt1',
-        'Pd+Rh1',
-        'Co+Pt1',
-        'Ni+Ga1',
-        'Cu+Zn1',
-        'Cu+Pt1',
-        'Cu+Rh1',
-        'Cu+Ni1',
-        'Au+Ag1',
-        'Au+Pt1',
-        'Au+Rh1',
-        'Au+Ni1',
-    ]
+    if extrapolation is True:
+        material_list = [
+            'Pt',
+            'Ru',
+            'Ag',
+            'Os',
+            'Fe',
+            'Ir',
+            'Rh+Ni1',
+            'Rh+Fe1',
+            'Pd+Pt1',
+            'Pd+Ni1',
+            'Co+Rh1',
+            'Co+Pd1',
+            'Ni+Rh1',
+            'Ni+Pd1',
+            'Cu+Mn1',
+            'Cu+Fe1',
+            'Cu+Os1',
+            'Au+Mo1',
+            'Au+Ir1',
+            'Au+Os1',
+            'Pt+Cu1',
+            'Pt+Mn1',
+            'Ru+Ni1',
+            'Ru+Pt1',
+            'Ag+Ni1',
+            'Ag+Pt1',
+            'Os+Cu1',
+            'Os+Rh1',
+            'Fe+Cu1',
+            'Fe+Rh1',
+            'Ir+Os1',
+            'Ir+Rh1',
+        ]
+    else:
+        material_list = [
+            'Rh',
+            'Pd',
+            'Co',
+            'Ni',
+            'Cu',
+            'Au',
+            'Rh+Pt1',
+            'Pd+Rh1',
+            'Co+Pt1',
+            'Ni+Ga1',
+            'Cu+Zn1',
+            'Cu+Pt1',
+            'Cu+Rh1',
+            'Cu+Ni1',
+            'Au+Ag1',
+            'Au+Pt1',
+            'Au+Rh1',
+            'Au+Ni1',
+        ]
     # Miller indices.
     miller_index_list = [
         '100',
         '111',
     ]
-    e_index_list = [None]
-    e_index_list = [0, 1, 2, 3, 4]
+    
+    # Main loop.
+    e_index_list = [0, 1, 2, 3, 4] if ensemble is True else [None]
     for material in material_list:
         for miller_index in miller_index_list:
             for e_index in e_index_list:
-                print(f'\nMaterial = {material}({miller_index})')
-                main(material=material, miller_index=miller_index, e_index=e_index)
+                print(f'\nSurface = {material}({miller_index})')
+                main(
+                    material=material,
+                    miller_index=miller_index,
+                    e_index=e_index,
+                    extrapolation=extrapolation,
+                )
     stop = timeit.default_timer()
     print(f'\nExecution time = {stop-start:6.3} s\n')
 

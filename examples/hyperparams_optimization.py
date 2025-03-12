@@ -29,23 +29,30 @@ def main():
     # Cross-validation parameters.
     species_type = "adsorbates" # adsorbates | reactions
     crossval_name = "StratifiedGroupKFold" # StratifiedKFold | StratifiedGroupKFold
-    key_groups = "material"
+    key_groups = "surface" # surface | bulk_elements
     key_stratify = "species"
     n_splits = 3
     random_state = 42
     most_stable = False
-    # Model parameters.
-    model_name = "WWLGPR" # LSR | BEP | SKLearn | WWLGPR
+    add_ref_atoms = True
+    exclude_add = True
+    # Model selection.
+    model_name = "WWLGPR" # Linear | SKLearn | WWLGPR
+    model_sklearn = "LightGBM" # RandomForest | XGBoost | LightGBM
     update_features = True
-    model_name_ref = "LSR"
+    model_name_ref = model_name[:]
+    # Model parameters.
     target = "E_act" if species_type == "reactions" else "E_form"
+    if model_name == "Linear":
+        model_name = "TSR" if species_type == "adsorbates" else "BEP"
+    if model_name_ref == "Linear":
+        model_name_ref = "TSR" if species_type == "adsorbates" else "BEP"
     model_params_dict = {
-        "LSR": {"keys_LSR": ["species"]},
+        "TSR": {"keys_TSR": ["species"] if most_stable else ["species", "site"]},
         "BEP": {"keys_BEP": ["species", "miller_index"]},
         "SKLearn": {"target": target, "model": None, "hyperparams": None},
         "WWLGPR": {"target": target, "hyperparams": None},
     }
-    add_ref_atoms = True
     species_ref = ["CO*", "H*", "O*"]
     
     # Read Ase database.
@@ -124,6 +131,7 @@ def main():
             key_groups=key_groups,
             key_stratify=key_stratify,
             atoms_add=atoms_add,
+            exclude_add=exclude_add,
             db_model=None,
             model_params=model_params_dict[model_name],
             print_error_thr=np.inf,

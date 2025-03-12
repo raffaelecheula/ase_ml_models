@@ -88,24 +88,34 @@ def main():
         surface_all_list = bep_data_all_dict[species]["surface"]
         ax.set_xlim(min(deltae_all_list)-0.5, max(deltae_all_list)+0.5)
         ax.set_ylim(min(e_act_all_list)-0.5, max(e_act_all_list)+0.5)
-        #base = 1.0 if material_labels is False and species == "CO2*→CO*+O*" else 0.5
-        #ax.xaxis.set_major_locator(MultipleLocator(base=base))
-        #ax.yaxis.set_major_locator(MultipleLocator(base=base))
+        if material_labels is False and max(deltae_all_list)-min(deltae_all_list) < 3:
+            base = 0.5
+        else:
+            base = 1.0
+        ax.xaxis.set_major_locator(MultipleLocator(base=base))
+        ax.yaxis.set_major_locator(MultipleLocator(base=base))
         # Plot the results.
         texts = []
+        points = []
+        lines = []
         for ii, key in enumerate(models_dict):
+            # Label.
+            facet, material = key.split(" ")
+            material_2 = "SAA" if "sa-alloy" in material else "PM"
+            label = f"{material_2} ({facet})"
             # Plot the BEP data.
             deltae_list = bep_data_dict[key]["ΔE_react"]
             e_act_list = bep_data_dict[key]["E_act"]
-            points = ax.scatter(
+            point = ax.scatter(
                 x=deltae_list,
                 y=e_act_list,
                 s=100,
                 edgecolors='black',
-                label=key,
+                label=label,
                 color=colors_dict[key],
                 zorder=2,
             )
+            points.append(point)
             # BEP regression for metals.
             if "metal" in key:
                 intercept = models_dict[key].intercept_
@@ -117,7 +127,9 @@ def main():
                     alpha=0.5,
                     color=colors_dict[key],
                     zorder=0,
+                    label=f"{label} BEP",
                 )
+                lines.append(line)
         if material_labels is True:
             # Add text.
             for xx, yy, name in zip(deltae_all_list, e_act_all_list, surface_all_list):
@@ -142,6 +154,14 @@ def main():
             )
         # Save the plot.
         name = species.replace("*", "")
+        #handles, labels = plt.gca().get_legend_handles_labels()
+        #order = [1,3,0,5,2,4]
+        #ax.legend(
+        #    [handles[idx] for idx in order],[labels[idx] for idx in order],
+        #    fontsize=12,
+        #    loc="upper left",
+        #    edgecolor="black",
+        #)
         plt.savefig(f"images/BEP/{name}.png", dpi=300)
 
 # -------------------------------------------------------------------------------------

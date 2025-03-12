@@ -14,8 +14,9 @@ def get_connectivity_ase(
     atoms: Atoms,
     indices: list = None,
     cutoffs_dict: dict = {},
-    skin: float = 0.3,
-):
+    skin: float = 0.1,
+    **kwargs,
+) -> np.ndarray:
     """ Get the connectivity matrix for an ase Atoms object."""
     from ase.neighborlist import NeighborList
     # Get cutoffs.
@@ -41,7 +42,7 @@ def get_edges_list(
     atoms: Atoms,
     indices: list = None,
     dist_ratio_thr: float = 1.25,
-):
+) -> list:
     """Get the edges for selected atoms in an ase Atoms object."""
     from itertools import combinations
     if indices is None:
@@ -63,10 +64,11 @@ def get_edges_list(
 # -------------------------------------------------------------------------------------
 
 def get_connectivity_from_edges_list(
+    atoms: Atoms,
     edges_list: list,
-):
+) -> np.ndarray:
     """Get the connectivity matrix from a list of edges."""
-    connectivity = np.zeros((len(edges_list), len(edges_list)), dtype=int)
+    connectivity = np.zeros((len(atoms), len(atoms)), dtype=int)
     for aa, bb in edges_list:
         connectivity[aa, bb] += 1
         connectivity[bb, aa] += 1
@@ -77,13 +79,13 @@ def get_connectivity_from_edges_list(
 # -------------------------------------------------------------------------------------
 
 def get_edges_list_from_connectivity(
-    connectivity: list,
-):
+    connectivity: np.ndarray,
+) -> list:
     """Get the connectivity matrix from a list of edges."""
     edges_list = []
     for aa, bb in np.argwhere(connectivity > 0):
         if bb > aa:
-            edges_list += [[aa, bb]] * int(connectivity[aa, bb])
+            edges_list += [[int(aa), int(bb)]] * int(connectivity[aa, bb])
     return edges_list
 
 # -------------------------------------------------------------------------------------
@@ -95,7 +97,8 @@ def get_connectivity_threshold(
     edges_list: list = None,
     indices: list = None,
     dist_ratio_thr: float = 1.25,
-):
+    **kwargs,
+) -> np.ndarray:
     """Get the connectivity matrix for selected atoms in an ase Atoms object."""
     if edges_list is None:
         edges_list = get_edges_list(
@@ -103,7 +106,10 @@ def get_connectivity_threshold(
             indices=indices,
             dist_ratio_thr=dist_ratio_thr,
         )
-    connectivity = get_connectivity_from_edges_list(edges_list=edges_list)
+    connectivity = get_connectivity_from_edges_list(
+        atoms=atoms,
+        edges_list=edges_list,
+    )
     return connectivity
 
 # -------------------------------------------------------------------------------------
@@ -115,19 +121,16 @@ def get_connectivity(
     method: str = "ase",
     ensure_bonding: bool = True,
     **kwargs,
-):
+) -> np.ndarray:
     """Get the connectivity matrix for an ase Atoms object."""
     # Get the connectivity.
     if method == "ase":
         connectivity = get_connectivity_ase(atoms=atoms, **kwargs)
     elif method == "threshold":
-        conectivity = get_connectivity_threshold(atoms=atoms, **kwargs)
+        connectivity = get_connectivity_threshold(atoms=atoms, **kwargs)
     # Ensure bonding.
     if ensure_bonding is True:
-        connectivity = ensure_bonding_ads_surf(
-            atoms=atoms,
-            connectivity=connectivity,
-        )
+        connectivity = ensure_bonding_ads_surf(atoms=atoms, connectivity=connectivity)
     return connectivity
 
 # -------------------------------------------------------------------------------------
@@ -137,13 +140,14 @@ def get_connectivity(
 def ensure_bonding_ads_surf(
     atoms: Atoms,
     connectivity: np.ndarray,
-):
+) -> np.ndarray:
     """Ensure bonding between adsorbates and surface atoms."""
+    if "indices_ads" not in atoms.info.keys() or len(atoms.info["indices_ads"]) == 0:
+        return connectivity
     indices_ads = atoms.info["indices_ads"]
     indices_surf = [ii for ii in range(len(atoms)) if ii not in indices_ads]
     n_bonds = len([
-        ii for ii in indices_surf for jj in indices_ads
-        if connectivity[ii, jj] > 0
+        ii for ii in indices_surf for jj in indices_ads if connectivity[ii, jj] > 0
     ])
     if n_bonds < 1:
         # Sort atoms by z-coordinate.
@@ -151,11 +155,41 @@ def ensure_bonding_ads_surf(
         atoms_surf = [aa for aa in atoms if aa.index in indices_surf]
         aa = sorted(atoms_ads, key=lambda a: a.position[2])[0].index
         bb = sorted(
-            atoms_surf,
-            key=lambda a: np.linalg.norm(a.position-atoms[aa].position)
+            atoms_surf, key=lambda a: np.linalg.norm(a.position-atoms[aa].position)
         )[0].index
         connectivity[aa, bb] = 1
         connectivity[bb, aa] = 1
+    return connectivity
+
+# -------------------------------------------------------------------------------------
+# PLOT CONNECTIVITY
+# -------------------------------------------------------------------------------------
+
+def get_connectivity_from_list(
+    atoms_list: list,
+    method: str = "ase",
+    ensure_bonding: bool = True,
+    sum_connectivity: bool = False,
+    **kwargs,
+):
+    """Get connectivity from a list of atoms."""
+    for ii, atoms in enumerate(atoms_list):
+        if "connectivity" in atoms.info:
+            connectivity_ii = atoms.info["connectivity"]
+        else:
+            connectivity_ii = get_connectivity(
+                atoms=atoms,
+                method=method,
+                ensure_bonding=ensure_bonding,
+                **kwargs,
+            )
+        if ii == 0:
+            connectivity = connectivity_ii
+        elif sum_connectivity is True:
+            connectivity += connectivity_ii
+        else:
+            for jj, kk in zip(*np.where(connectivity_ii > connectivity)):
+                connectivity[jj, kk] = connectivity_ii[jj, kk]
     return connectivity
 
 # -------------------------------------------------------------------------------------
@@ -169,6 +203,7 @@ def plot_connectivity(
     show_plot: bool = True,
     show_axis: bool = False,
     colors: str = "jmol",
+    alpha: float = None,
     scale_radii: float = 100,
 ):
     """Plot the atoms and bonds of an ase.Atoms object."""
@@ -200,10 +235,10 @@ def plot_connectivity(
     fig = plt.figure(figsize=(8, 8), dpi=300)
     ax = fig.add_subplot(projection="3d")
     # Plot the nodes.
-    ax.scatter(*atoms.positions.T, s=scale_radii*radii, c=colors, ec="k")
+    ax.scatter(*atoms.positions.T, s=scale_radii*radii, c=colors, ec="k", alpha=alpha)
     # Plot the edges.
     for edge in edges_xyz:
-        ax.plot(*edge.T, color="gray")
+        ax.plot(*edge.T, color="grey")
     # Adjust the figure.
     ax.grid(False)
     if show_axis is True:
@@ -231,8 +266,8 @@ def plot_connectivity(
 
 def enlarge_surface(
     atoms: Atoms,
-):
-    """Enlarge the structure by adding atoms at the indices."""
+) -> Atoms:
+    """Enlarge the structure by adding atoms at the cell boundaries."""
     atoms_enlarged = atoms.copy()
     for ii in [-1, 0, 1]:
         for jj in [-1, 0, 1]:
@@ -279,7 +314,7 @@ def get_reduced_graph_atoms(
     indices_ads: list = None,
     method: str = "ase",
     bond_cutoff: int = 2,
-):
+) -> Atoms:
     """Get the reduced graph atoms."""
     if indices_ads is None:
         indices_ads = atoms.info["indices_ads"]
@@ -324,7 +359,7 @@ def get_reduced_graph_atoms(
 def modify_name(
     name: str,
     replace_dict: dict = {"+": " + ", "→": " → "},
-):
+) -> str:
     """Modify the species name."""
     # Add subscripts to numbers in chemical formulas.
     name_new = ""

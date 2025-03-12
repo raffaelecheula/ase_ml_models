@@ -3,36 +3,57 @@
 # -------------------------------------------------------------------------------------
 
 import numpy as np
+from ase.io import read
+from matplotlib.pyplot import savefig
 
-from ase_ml_models.utilities import get_connectivity, plot_connectivity
+from ase_ml_models.utilities import (
+    get_connectivity,
+    get_connectivity_from_list,
+    plot_connectivity,
+)
 
 # -------------------------------------------------------------------------------------
 # MAIN
 # -------------------------------------------------------------------------------------
 
-def main():
+def main(struct="TS"):
 
-    from ase.build import molecule, fcc111
-    from ase.constraints import FixAtoms
-    # Surface.
-    atoms_clean = fcc111("Pt", (3, 3, 4), vacuum=12.0)
-    atoms_clean.set_constraint(FixAtoms(mask=[aa.tag > 2 for aa in atoms_clean]))
-    atoms_clean.write("atoms_clean.traj")
+    # Parameters.
+    rot_x = +20
+    rot_y = -125
+
     # Adsorbate.
-    ads = molecule("CO")
-    ads.translate(atoms_clean.positions[31]-ads.positions[1]+[0., 0., 1.80])
-    atoms = atoms_clean+ads
-    atoms.info["indices_ads"] = [36, 37]
-    atoms.write("atoms.traj")
+    atoms = read(f"atoms_{struct}.traj")
+    atoms.cell[2,2] += 5.
+    if struct != "gas":
+        atoms[31].symbol = "Pt"
+        atoms.translate([+0.4, +0.4, +0.0])
     # Connectivity.
-    connectivity = get_connectivity(
-        atoms=atoms,
-        method="ase",
-    )
-    # Plot connectivity.
-    plot_connectivity(
-        atoms=atoms,
-        connectivity=connectivity,
+    if struct == "TS":
+        atoms.info["connectivity"] = get_connectivity_from_list(
+            atoms_list=[read(f"atoms_{ss}.traj") for ss in ["IS", "FS"]],
+            method="ase",
+            ensure_bonding=True,
+        )
+    else:
+        atoms.info["connectivity"] = get_connectivity(
+            atoms=atoms,
+            method="ase",
+            ensure_bonding=True,
+        )
+    # Write graph.
+    ax = plot_connectivity(atoms=atoms, show_plot=False, alpha=1.0)
+    ax.elev = rot_x
+    ax.azim = -90-rot_y
+    savefig(f"graph_{struct}.png", dpi=300, transparent=True)
+    # Write struture.
+    atoms.write(
+        filename=f"image_{struct}.png",
+        scale=300,
+        maxwidth=500,
+        radii=0.95,
+        rotation=f"-90x,{rot_y}y,{rot_x}x",
+        show_unit_cell=False,
     )
 
 # -------------------------------------------------------------------------------------
@@ -40,7 +61,8 @@ def main():
 # -------------------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    main()
+    for struct in ["clean", "gas", "IS", "TS", "FS"]:
+        main(struct=struct)
 
 # -------------------------------------------------------------------------------------
 # END

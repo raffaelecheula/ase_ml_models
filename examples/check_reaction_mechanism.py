@@ -16,8 +16,8 @@ from ase_ml_models.databases import get_atoms_list_from_db
 def main():
 
     # Ase database names.
-    db_ads_name = "atoms_adsorbates_DFT.db"
-    db_ts_name = "atoms_reactions_DFT.db"
+    db_ads_name = "atoms_adsorbates_DFT_bulk.db"
+    db_ts_name = "atoms_reactions_DFT_bulk.db"
 
     # Materials.
     material_list = [

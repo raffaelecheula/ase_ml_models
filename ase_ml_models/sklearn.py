@@ -24,7 +24,7 @@ def sklearn_preprocess(
         in zip(atoms_list[0].info["features_ave"], features_names)
         if not isinstance(feature, str)
     ]
-    # Get the features  and categorical features.
+    # Get the features and categorical features.
     features = []
     features_categ = []
     for atoms in atoms_list:
@@ -92,9 +92,11 @@ def sklearn_predict(
     X_test = np.array([atoms.info["features_mod"] for atoms in atoms_test])
     # Predict the target values.
     y_pred = model.predict(X=X_test)
-    if target == "E_act":
-        y_pred = [y+atoms.info["E_first"] for y, atoms in zip(y_pred, atoms_test)]
-    return list(y_pred)
+    if target == "E_bind":
+        y_pred = [yy+atoms.info["E_form_gas"] for yy, atoms in zip(y_pred, atoms_test)]
+    elif target == "E_act":
+        y_pred = [yy+atoms.info["E_first"] for yy, atoms in zip(y_pred, atoms_test)]
+    return [float(yy) for yy in y_pred]
         
 # -------------------------------------------------------------------------------------
 # END

@@ -1,6 +1,6 @@
 # Custom
 *.db
-results/
+old/
 tests/
 plots/
 images/

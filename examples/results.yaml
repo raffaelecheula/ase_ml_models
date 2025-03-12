@@ -179,7 +179,7 @@ DFT+DFT:
       CO TOF: +1.93016438E-10
       CO2 conv: +6.86730448E-12
       paths: {CO-O path: +8.49856402E-01, COO-H path: +9.91754513E-04, H-COO path: +1.49151844E-01}
-LSR+BEP:
+TSR+BEP:
   Rh(100):
     null:
       CO TOF: +4.29181782E-04

@@ -17,14 +17,14 @@ def train_model_and_predict(
 ) -> dict:
     """Train the model and predict the test data."""
     # Linear scaling models.
-    if model_name == "LSR":
-        from ase_ml_models.linear import lsr_train, lsr_predict
-        models_dict = lsr_train(
+    if model_name == "TSR":
+        from ase_ml_models.linear import tsr_train, tsr_predict
+        models_dict = tsr_train(
             atoms_train=atoms_train,
             **model_params,
         )
         # Predict test data.
-        y_pred = lsr_predict(
+        y_pred = tsr_predict(
             atoms_test=atoms_test,
             models_dict=models_dict,
             **model_params,
@@ -89,6 +89,7 @@ def crossvalidation(
     key_groups: str = "material",
     key_stratify: str = "species",
     atoms_add: list = [],
+    exclude_add: bool = True,
     db_model: Database = None,
     print_error_thr: float = 0.5, # [eV]
     model_params: dict = {},
@@ -123,25 +124,25 @@ def crossvalidation(
         )
         y_pred = results["y_pred"]
         # Store the results in the ase database.
-        add_indices = []
+        excluded = []
         for kk, atoms in enumerate(atoms_test):
             e_form = y_pred[kk]
             e_form_dft = y_test[kk]
-            if atoms.info["name"] in atoms_add_names:
-                add_indices.append(kk)
+            if atoms.info["name"] in atoms_add_names and exclude_add is True:
+                excluded.append(kk)
             if db_model is not None:
                 atoms_copy = atoms.copy()
                 atoms_copy.info = atoms.info.copy()
-                atoms_copy.info["E_form"] = e_form
-                atoms_copy.info["E_form_dft"] = e_form_dft
+                atoms_copy.info["E_form"] = float(e_form)
+                atoms_copy.info["E_form_dft"] = float(e_form_dft)
                 write_atoms_to_db(atoms=atoms_copy, db_ase=db_model)
             # Print high-error structures.
             if np.abs(e_form-e_form_dft) > print_error_thr:
                 print(f"{atoms.info['name']:70s} {e_form:+7.3f} {e_form_dft:+7.3f}")
         # Store the results in lists.
-        y_test_all += [yy for kk, yy in enumerate(y_test) if kk not in add_indices]
-        y_pred_all += [yy for kk, yy in enumerate(y_pred) if kk not in add_indices]
-        y_err_all += list(np.abs(np.array(y_pred)-np.array(y_test)))
+        y_test_all += [yy for kk, yy in enumerate(y_test) if kk not in excluded]
+        y_pred_all += [yy for kk, yy in enumerate(y_pred) if kk not in excluded]
+        y_err_all += list(np.abs(np.array(y_pred_all)-np.array(y_test_all)))
     # Return the results.
     results = {
         "y_test": y_test_all,
@@ -161,6 +162,7 @@ def ensemble_crossvalidation(
     key_groups: str = "material",
     key_stratify: str = "species",
     atoms_add: list = [],
+    exclude_add: bool = True,
     db_model: Database = None,
     print_error_thr: float = 0.5, # [eV]
     model_params: dict = {},
@@ -212,13 +214,13 @@ def ensemble_crossvalidation(
         y_std = list(np.std(y_pred_list, axis=0))
         # Store the results in the ase database.
         y_pred_array = np.array(y_pred_list)
-        add_indices = []
+        excluded = []
         for kk, atoms in enumerate(atoms_test):
             e_form = y_pred[kk]
             e_form_list = y_pred_array[:, kk]
             e_form_dft = y_test[kk]
-            if atoms.info["name"] in atoms_add_names:
-                add_indices.append(kk)
+            if atoms.info["name"] in atoms_add_names and exclude_add is True:
+                excluded.append(kk)
             if db_model is not None:
                 atoms_copy = atoms.copy()
                 atoms_copy.info = atoms.info.copy()
@@ -230,10 +232,10 @@ def ensemble_crossvalidation(
             if np.abs(e_form-e_form_dft) > print_error_thr:
                 print(f"{atoms.info['name']:70s} {e_form:+7.3f} {e_form_dft:+7.3f}")
         # Store the results in lists.
-        y_test_all += [yy for kk, yy in enumerate(y_test) if kk not in add_indices]
-        y_pred_all += [yy for kk, yy in enumerate(y_pred) if kk not in add_indices]
-        y_err_all += list(np.abs(np.array(y_pred)-np.array(y_test)))
-        y_std_all += [yy for kk, yy in enumerate(y_std) if kk not in add_indices]
+        y_test_all += [yy for kk, yy in enumerate(y_test) if kk not in excluded]
+        y_pred_all += [yy for kk, yy in enumerate(y_pred) if kk not in excluded]
+        y_err_all += list(np.abs(np.array(y_pred_all)-np.array(y_test_all)))
+        y_std_all += [yy for kk, yy in enumerate(y_std) if kk not in excluded]
     # Return the results.
     results = {
         "y_test": y_test_all,
@@ -352,7 +354,7 @@ def parity_plot(
     results: dict,
     ax: object = None,
     lims: list = [-3, +5],
-    alpha: float = 0.3,
+    alpha: float = 0.20,
     color: str = "crimson",
     show_errors: bool = True,
     add_violin_plot: bool = True,
@@ -360,26 +362,18 @@ def parity_plot(
     """Parity plot of the results."""
     if ax is None:
         import matplotlib.pyplot as plt
-        fig, ax = plt.subplots(figsize=(8, 8))
+        fig, ax = plt.subplots(figsize=(6, 6), dpi=300)
     ax.plot(lims, lims, "k--")
-    if "y_std" not in results:
-        ax.scatter(
-            x=results["y_test"],
-            y=results["y_pred"],
-            marker="o",
-            alpha=alpha,
-            color=color,
-        )
-    else:
-        ax.errorbar(
-            x=results["y_test"],
-            y=results["y_pred"],
-            yerr=results["y_std"],
-            fmt="o",
-            alpha=alpha,
-            color=color,
-            capsize=5,
-        )
+    ax.errorbar(
+        x=results["y_test"],
+        y=results["y_pred"],
+        yerr=results["y_std"] if "y_std" in results else None,
+        ms=5,
+        fmt="o",
+        alpha=alpha,
+        color=color,
+        capsize=3,
+    )
     ax.set_xlim(*lims)
     ax.set_ylim(*lims)
     ax.set_xlabel("E$_{DFT}$ [eV]", fontdict={"fontsize": 16})
@@ -395,7 +389,7 @@ def parity_plot(
         mae = mean_absolute_error(y_test, y_pred)
         rmse = mean_squared_error(y_test, y_pred, squared=False)
         ax.text(
-            x=lims[0]+(lims[1]-lims[0])*0.19,
+            x=lims[0]+(lims[1]-lims[0])*0.23,
             y=lims[0]+(lims[1]-lims[0])*0.92,
             s=f"MAE = {mae:6.3f} [eV]\nRMSE = {rmse:6.3f} [eV]",
             fontsize=13,
@@ -417,6 +411,7 @@ def parity_plot(
             ylim=[0., +1.5],
             alpha=0.8,
             color=color,
+            show_errors=False,
         )
     return ax
 
@@ -430,11 +425,12 @@ def violin_plot(
     ylim: list = [0., +1.5],
     alpha: float = 0.8,
     color: str = "crimson",
+    show_errors: bool = True,
 ) -> object:
     """Violin plot of the errors."""
     if ax is None:
         import matplotlib.pyplot as plt
-        fig, ax = plt.subplots(figsize=(8, 8))
+        fig, ax = plt.subplots(figsize=(6, 6), dpi=300)
     violin = ax.violinplot(
         dataset=[results["y_err"]],
         showmeans=False,
@@ -450,6 +446,26 @@ def violin_plot(
     ax.tick_params(labelsize=13, width=1.5, length=6, direction="inout")
     for spine in ax.spines.values():
         spine.set_linewidth(1.5)
+    if show_errors is True:
+        y_test = results["y_test"]
+        y_pred = results["y_pred"]
+        from sklearn.metrics import mean_absolute_error, mean_squared_error
+        mae = mean_absolute_error(y_test, y_pred)
+        rmse = mean_squared_error(y_test, y_pred, squared=False)
+        ax.text(
+            x=0.85,
+            y=0.92*ylim[1],
+            s=f"MAE = {mae:6.3f} [eV]\nRMSE = {rmse:6.3f} [eV]",
+            fontsize=13,
+            ha='center',
+            va='center',
+            bbox={
+                "boxstyle": 'round,pad=0.5',
+                "edgecolor": 'black',
+                "facecolor": 'white',
+                "linewidth": 1.5,
+            },
+        )
     return ax
 
 # -------------------------------------------------------------------------------------

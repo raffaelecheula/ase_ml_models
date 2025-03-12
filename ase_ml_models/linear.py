@@ -7,19 +7,19 @@ from ase import Atoms
 from sklearn.linear_model import LinearRegression
 
 # -------------------------------------------------------------------------------------
-# LSR PREPARE
+# TSR PREPARE
 # -------------------------------------------------------------------------------------
 
-def lsr_prepare(
+def tsr_prepare(
     atoms_list: list,
-    species_LSR: list,
-    fixed_LSR: dict = {},
+    species_TSR: list,
+    fixed_TSR: dict = {},
 ):
     """Prepare the data for Linear Scaling Relations."""
     # Get reference energies for each surface.
     energies_ref_dict = {}
     for atoms in [
-        atoms for atoms in atoms_list if atoms.info["species"] in species_LSR
+        atoms for atoms in atoms_list if atoms.info["species"] in species_TSR
     ]:
         surface = atoms.info["surface"]
         species = atoms.info["species"]
@@ -31,49 +31,49 @@ def lsr_prepare(
     for atoms in atoms_list:
         surface = atoms.info["surface"]
         species = atoms.info["species"]
-        species_LSR_ii = fixed_LSR[species] if species in fixed_LSR else species_LSR
-        atoms.info["species_LSR"] = species_LSR_ii
-        atoms.info["E_LSR"] = [
-            energies_ref_dict[surface][species] for species in species_LSR_ii
+        species_TSR_ii = fixed_TSR[species] if species in fixed_TSR else species_TSR
+        atoms.info["species_TSR"] = species_TSR_ii
+        atoms.info["E_TSR"] = [
+            energies_ref_dict[surface][species] for species in species_TSR_ii
         ]
 
 # -------------------------------------------------------------------------------------
-# GET LSR DATA DICT
+# GET TSR DATA DICT
 # -------------------------------------------------------------------------------------
 
-def get_lsr_data_dict(
+def get_tsr_data_dict(
     atoms_train: list,
-    keys_LSR: list = ["species"],
+    keys_TSR: list = ["species"],
 ):
     """Get the dictionary of data for Linear Scaling Relations."""
     # Prepare the dictionary.
-    lsr_data_dict = {
-        " ".join([atoms.info[key] for key in keys_LSR]):
-            {"E_form": [], "E_LSR": [], "surface": []}
+    tsr_data_dict = {
+        " ".join([atoms.info[key] for key in keys_TSR]):
+            {"E_form": [], "E_TSR": [], "surface": []}
         for atoms in atoms_train
     }
-    # Collect the data for LSR relations.
+    # Collect the data for TSR relations.
     for atoms in atoms_train:
-        key = " ".join([atoms.info[key] for key in keys_LSR])
-        lsr_data_dict[key]["E_form"].append(atoms.info["E_form"])
-        lsr_data_dict[key]["E_LSR"].append(atoms.info["E_LSR"])
+        key = " ".join([atoms.info[key] for key in keys_TSR])
+        tsr_data_dict[key]["E_form"].append(atoms.info["E_form"])
+        tsr_data_dict[key]["E_TSR"].append(atoms.info["E_TSR"])
         if "surface" in atoms.info:
-            lsr_data_dict[key]["surface"].append(atoms.info["surface"])
-    return lsr_data_dict
+            tsr_data_dict[key]["surface"].append(atoms.info["surface"])
+    return tsr_data_dict
 
 # -------------------------------------------------------------------------------------
-# GET LSR MODELS DICT
+# GET TSR MODELS DICT
 # -------------------------------------------------------------------------------------
 
-def get_lsr_models_dict(
-    lsr_data_dict: dict,
+def get_tsr_models_dict(
+    tsr_data_dict: dict,
 ):
     """Train the Linear Scaling Relation models."""
     # Train the models.
     models_dict = {}
-    for key in lsr_data_dict:
-        e_form_list = lsr_data_dict[key]["E_form"]
-        e_lrs_list = lsr_data_dict[key]["E_LSR"]
+    for key in tsr_data_dict:
+        e_form_list = tsr_data_dict[key]["E_form"]
+        e_lrs_list = tsr_data_dict[key]["E_TSR"]
         y_dep = np.array(e_form_list)
         X_indep = np.array(e_lrs_list)
         regr = LinearRegression()
@@ -82,32 +82,32 @@ def get_lsr_models_dict(
     return models_dict
 
 # -------------------------------------------------------------------------------------
-# LSR TRAIN
+# TSR TRAIN
 # -------------------------------------------------------------------------------------
 
-def lsr_train(
+def tsr_train(
     atoms_train: list,
-    keys_LSR: list = ["species"],
+    keys_TSR: list = ["species"],
 ):
     """Get the data and train the Linear Scaling Relation models."""
-    lsr_data_dict = get_lsr_data_dict(atoms_train=atoms_train, keys_LSR=keys_LSR)
-    models_dict = get_lsr_models_dict(lsr_data_dict=lsr_data_dict)
+    tsr_data_dict = get_tsr_data_dict(atoms_train=atoms_train, keys_TSR=keys_TSR)
+    models_dict = get_tsr_models_dict(tsr_data_dict=tsr_data_dict)
     return models_dict
 
 # -------------------------------------------------------------------------------------
-# LSR PREDICT
+# TSR PREDICT
 # -------------------------------------------------------------------------------------
 
-def lsr_predict(
+def tsr_predict(
     atoms_test: list,
     models_dict: dict,
-    keys_LSR: list = ["species"],
+    keys_TSR: list = ["species"],
 ):
     """Predict energies from Linear Scaling Relation models."""
     y_pred = []
     for atoms in atoms_test:
-        key = " ".join([atoms.info[key] for key in keys_LSR])
-        e_form = models_dict[key].predict([atoms.info["E_LSR"]])[0]
+        key = " ".join([atoms.info[key] for key in keys_TSR])
+        e_form = models_dict[key].predict([atoms.info["E_TSR"]])[0]
         y_pred.append(e_form)
     return y_pred
 

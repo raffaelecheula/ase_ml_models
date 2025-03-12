@@ -116,6 +116,8 @@ def wwlgpr_train(
     node_attributes = [atoms.info["features"] for atoms in atoms_train]
     energies = [atoms.info[target] for atoms in atoms_train]
     filenames = [atoms.info["name"] for atoms in atoms_train]
+    if hyperparams is not None:
+        BayOptCv.default_gpr_hyper.update(hyperparams)
     model = BayOptCv(
         num_cpus=num_cpus,
         db_graphs=train_db_graphs,
@@ -127,8 +129,6 @@ def wwlgpr_train(
         pre_data_type=pre_data_type,
         filenames=filenames,
     )
-    if hyperparams is not None:
-        BayOptCv.default_gpr_hyper.update(hyperparams)
     if optimize_hyperpars is True:
         optimize_hyperpars_wwlgpr(model=model, n_calls=n_calls)
     print("WWL-GPR model trained.")
@@ -160,8 +160,10 @@ def wwlgpr_predict(
         opt_hypers=opt_hypers,
     )
     print(f"Test RMSE: {test_RMSE:7.4f} eV")
-    if target == "E_act":
-        y_pred = [y+atoms.info["E_first"] for y, atoms in zip(y_pred, atoms_test)]
+    if target == "E_bind":
+        y_pred = [yy+atoms.info["E_form_gas"] for yy, atoms in zip(y_pred, atoms_test)]
+    elif target == "E_act":
+        y_pred = [yy+atoms.info["E_first"] for yy, atoms in zip(y_pred, atoms_test)]
     return list(y_pred)
 
 # -------------------------------------------------------------------------------------
