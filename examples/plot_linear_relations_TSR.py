@@ -4,8 +4,8 @@
 
 import os
 import numpy as np
-from ase.db import connect
 import matplotlib.pyplot as plt
+from ase.db import connect
 from matplotlib.ticker import MultipleLocator
 from adjustText import adjust_text
 from sklearn.linear_model import LinearRegression
@@ -28,11 +28,12 @@ from ase_ml_models.utilities import modify_name
 def main():
 
     # Ase database.
-    db_ase_name = "atoms_adsorbates_DFT.db"
+    db_ase_name = "databases/atoms_adsorbates_DFT_database.db"
     most_stable = True
     material_labels = False
     time_lim = 100
     get_heatmap = False
+    legend = False
     
     # Read Ase database.
     db_ase = connect(db_ase_name)
@@ -69,11 +70,12 @@ def main():
     # Prepare the data for Thermochemical Scaling Relations.
     tsr_prepare(atoms_list=atoms_list, species_TSR=species_TSR, fixed_TSR=fixed_TSR)
     # Get the heatmap.
-    os.makedirs("images/TSR", exist_ok=True)
+    label_key = "label" if material_labels is True else "nolabel"
+    os.makedirs(f"images/linear_relations/TSR_{label_key}", exist_ok=True)
     if get_heatmap is True:
         ax = get_correlation_heatmap(atoms_list=atoms_list)
         plt.subplots_adjust(left=0.15, right=0.90, bottom=0.20, top=0.90)
-        plt.savefig(f"images/TSR/correlation_heatmap.png", dpi=300)
+        plt.savefig(f"images/linear_relations/correlation_heatmap.png", dpi=300)
     # Get the data for the TSR relations.
     tsr_data_all_dict = get_tsr_data_dict(atoms_train=atoms_list)
     models_all_dict = get_tsr_models_dict(tsr_data_dict=tsr_data_all_dict)
@@ -92,14 +94,14 @@ def main():
         models_dict = get_tsr_models_dict(tsr_data_dict=tsr_data_dict)
         # Prepare the plot.
         if material_labels is True:
-            fig, ax = plt.subplots(figsize=(8, 8))
+            fig, ax = plt.subplots(figsize=(7, 7), dpi=300)
         else:
             fig, ax = plt.subplots(figsize=(5, 5), dpi=300)
             plt.subplots_adjust(left=0.20, right=0.90, bottom=0.20, top=0.90)
-        title = modify_name(species, replace_dict={})
+        title = modify_name(species)
         ax.set_title(title, fontdict={"fontsize": 20})
-        species_x = modify_name(fixed_TSR[species][0], replace_dict={})
-        species_y = modify_name(species, replace_dict={})
+        species_x = modify_name(fixed_TSR[species][0])
+        species_y = modify_name(species)
         ax.set_xlabel("E$_{form}$ ("+species_x+") [eV]", fontdict={"fontsize": 16})
         ax.set_ylabel("E$_{form}$ ("+species_y+") [eV]", fontdict={"fontsize": 16})
         ax.tick_params(labelsize=13, width=1.5, length=6, direction="inout")
@@ -111,9 +113,6 @@ def main():
         surface_all_list = tsr_data_all_dict[species]["surface"]
         ax.set_xlim(min(e_tsr_all_list)-0.5, max(e_tsr_all_list)+0.5)
         ax.set_ylim(min(e_form_all_list)-0.5, max(e_form_all_list)+0.5)
-        #base = 0.5 if material_labels is True else 1.0
-        #ax.xaxis.set_major_locator(MultipleLocator(base=base))
-        #ax.yaxis.set_major_locator(MultipleLocator(base=base))
         # Plot the results.
         texts = []
         for ii, key in enumerate(models_dict):
@@ -157,7 +156,7 @@ def main():
                 text = ax.text(
                     x=xx,
                     y=yy,
-                    s=modify_name(name, replace_dict={}),
+                    s=modify_name(name),
                     fontsize=8,
                     ha='center',
                     va='center',
@@ -175,8 +174,18 @@ def main():
             )
         # Save the plot.
         name = species.replace("*", "")
-        plt.savefig(f"images/TSR/{name}.png", dpi=300)
-    
+        if legend is True:
+            handles, labels = plt.gca().get_legend_handles_labels()
+            order = [1,3,0,5,2,4]
+            ax.legend(
+                [handles[ii] for ii in order],
+                [labels[ii] for ii in order],
+                fontsize=12,
+                loc="upper left",
+                edgecolor="black",
+            )
+        plt.savefig(f"images/linear_relations/TSR_{label_key}/{name}.png", dpi=300)
+
 # -------------------------------------------------------------------------------------
 # IF NAME MAIN
 # -------------------------------------------------------------------------------------

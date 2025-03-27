@@ -17,17 +17,18 @@ from ase_ml_models.utilities import modify_name
 
 def main():
 
-    # Model.
-    model = "SKLearn+SKLearn"
+    # Parameters.
+    reaction = "RWGS" # WGS | RWGS
+    model = "TSR+BEP"
 
     # Read microkinetics results.
-    yaml_results = "results.yaml"
+    yaml_results = f"results_database_{reaction}.yaml"
     with open(yaml_results, 'r') as fileobj:
         results_all = yaml.safe_load(fileobj)
     results_DFT = results_all["DFT+DFT"]
     
     # Read microkinetics results extrapolation.
-    yaml_results = "results_extra.yaml"
+    yaml_results = f"results_extrapol_{reaction}.yaml"
     with open(yaml_results, 'r') as fileobj:
         results_all = yaml.safe_load(fileobj)
     results_extra = results_all[model]
@@ -46,12 +47,12 @@ def main():
         material = split[0]+split[2]
         facet = split[1]
         # TOF.
-        tof = results_DFT[surface][None]["CO TOF"]*facet_fracs[facet]
+        tof = results_DFT[surface][None]["TOF"]*facet_fracs[facet]
         tofs_DFT[material] = tofs_DFT.get(material, 0.) + tof
     ltofs_DFT = []
     for material in tofs_DFT:
         ltofs_DFT.append(np.log10(tofs_DFT[material]))
-        materials_DFT.append(modify_name(material, replace_dict={}))
+        materials_DFT.append(modify_name(material))
     
     # Extrapolated data.
     tofs_list_extra = {}
@@ -63,7 +64,7 @@ def main():
         facet = split[1]
         # TOF list.
         tof_list = [
-            results_extra[surface][ii]["CO TOF"]*facet_fracs[facet] for ii in range(5)
+            results_extra[surface][ii]["TOF"]*facet_fracs[facet] for ii in range(5)
         ]
         if material in tofs_list_extra:
             tof_list = list(np.sum([tof_list, tofs_list_extra[material]], axis=0))
@@ -74,7 +75,7 @@ def main():
         ltof_list = [np.log10(tof) for tof in tof_list]
         ltofs_extra.append(np.mean(ltof_list))
         lstds_extra.append(np.std(ltof_list))
-        materials_extra.append(modify_name(material, replace_dict={}))
+        materials_extra.append(modify_name(material))
     
     # Turnover frequencies plot.
     fig, ax = plt.subplots(figsize=(10, 5), dpi=150)
@@ -88,17 +89,11 @@ def main():
     ax.bar(
         x=materials_extra,
         height=np.array(ltofs_extra)+14,
+        yerr=np.array(lstds_extra).T * 2,
         color="crimson",
         alpha=0.7,
         label="extrapolation",
         bottom=-14,
-    )
-    ax.errorbar(
-        x=materials_extra,
-        y=ltofs_extra,
-        yerr=np.array(lstds_extra).T * 2,
-        fmt=" ",
-        color="black",
         capsize=5,
     )
     ax.set_xlim(-0.5, len(materials_DFT+materials_extra)-0.5)
@@ -106,8 +101,9 @@ def main():
     ax.tick_params(axis="x", rotation=90)
     ax.legend(edgecolor="black", loc="lower right", framealpha=1.)
     plt.subplots_adjust(bottom=0.25, top=0.95, left=0.10, right=0.95)
-    os.makedirs("images/TOF", exist_ok=True)
-    plt.savefig(f"images/TOF/materials_TOF_extra_{model}.png", dpi=300)
+    dirname = f"images/reaction_{reaction}_extrapol"
+    os.makedirs(dirname, exist_ok=True)
+    plt.savefig(f"{dirname}/materials_TOF_extra_{model}.png", dpi=300)
     
 # -------------------------------------------------------------------------------------
 # IF NAME MAIN

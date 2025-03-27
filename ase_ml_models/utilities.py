@@ -358,7 +358,7 @@ def get_reduced_graph_atoms(
 
 def modify_name(
     name: str,
-    replace_dict: dict = {"+": " + ", "→": " → "},
+    replace_dict: dict = {},
 ) -> str:
     """Modify the species name."""
     # Add subscripts to numbers in chemical formulas.

@@ -28,34 +28,81 @@ from ase_ml_models.databases import get_atoms_list_from_db
 # MAIN
 # -------------------------------------------------------------------------------------
 
-def main(
+def main():
+    
+    # Parameters.
+    reaction = "RWGS" # WGS | RWGS
+    task = "database" # database | extrapol
+    ensemble = False
+    calculate_DRC = False
+    model_adsorbates = "DFT" # DFT | TSR | SKLearn | WWLGPR
+    model_reactions = "DFT" # DFT | BEP | SKLearn | WWLGPR
+    
+    # Get materials and Miller indices.
+    with open("materials.yaml", 'r') as fileobj:
+        data = yaml.safe_load(fileobj)
+    miller_index_list = data["miller_indices"]
+    material_list = data[f"materials_{task}"]
+    
+    # Main loop.
+    e_index_list = [0, 1, 2, 3, 4] if ensemble is True else [None]
+    for material in material_list:
+        for miller_index in miller_index_list:
+            for e_index in e_index_list:
+                print(f'\nSurface = {material}({miller_index})')
+                kinetics_integration(
+                    reaction=reaction,
+                    model_adsorbates=model_adsorbates,
+                    model_reactions=model_reactions,
+                    material=material,
+                    miller_index=miller_index,
+                    e_index=e_index,
+                    task=task,
+                    calculate_DRC=calculate_DRC,
+                )
+    stop = timeit.default_timer()
+    print(f'\nExecution time = {stop-start:6.3} s\n')
+
+# -------------------------------------------------------------------------------------
+# MAIN
+# -------------------------------------------------------------------------------------
+
+def kinetics_integration(
+    reaction="WGS",
+    model_adsorbates="DFT",
+    model_reactions="DFT",
     material='Rh',
     miller_index='100',
     e_index=None,
-    extrapolation=False,
+    task="database",
+    calculate_DRC=False,
 ):
 
-    # Models parameters.
-    model_adsorbates = "SKLearn" # DFT | TSR | SKLearn | WWLGPR
-    model_reactions = "SKLearn" # DFT | BEP | SKLearn | WWLGPR
-
     # Analysis parameters.
-    calculate_DRC = False
     reaction_indices = {"CO-O path": 4, "COO-H path": 6, "H-COO path": 7}
 
     # Set temperature and pressure of the simulation.
-    temperature_celsius = 500. # [C]
+    temperature_celsius = 300. # [C]
     temperature = units.Celsius_to_Kelvin(temperature_celsius) # [K]
-    pressure = 1 * units.atm # [Pa]
+    pressure = 30 * units.atm # [Pa]
     
     # Set molar fractions of gas species.
-    gas_molfracs_inlet = {
-        'CO2': 0.28,
-        'H2': 0.28,
-        'H2O': 0.02,
-        'CO': 0.02,
-        'N2': 0.40,
-    }
+    if reaction == "WGS":
+        gas_molfracs_inlet = {
+            'CO2': 0.02,
+            'H2': 0.02,
+            'H2O': 0.28,
+            'CO': 0.28,
+            'N2': 0.40,
+        }
+    elif reaction == "RWGS":
+        gas_molfracs_inlet = {
+            'CO2': 0.28,
+            'H2': 0.28,
+            'H2O': 0.02,
+            'CO': 0.02,
+            'N2': 0.40,
+        }
     
     # Set the initial coverages of the free catalytic sites.
     cat_coverages_inlet = {'(Rh)': 1.0}
@@ -77,12 +124,8 @@ def main(
 
     # Reaction mechanism parameters.
     yaml_file = 'mechanism.yaml'
-    if extrapolation is True:
-        db_ads_name = f"atoms_adsorbates_{model_adsorbates}_extra.db"
-        db_ts_name = f"atoms_reactions_{model_reactions}_extra.db"
-    else:
-        db_ads_name = f"atoms_adsorbates_{model_adsorbates}.db"
-        db_ts_name = f"atoms_reactions_{model_reactions}.db"
+    db_ads_name = f"databases/atoms_adsorbates_{model_adsorbates}_{task}.db"
+    db_ts_name = f"databases/atoms_reactions_{model_reactions}_{task}.db"
     
     # Formations energies.
     db_ads = connect(db_ads_name)
@@ -188,17 +231,28 @@ def main(
         gas.TDY = cstr.thermo.TDY
         upstream.syncState()
 
-    # Calculate the conversion of CO2 and the tof of CO.
+    # Calculate the conversion and the TOF.
     print('\n- Catalytic activity.')
+    gas_reac = "CO" if reaction == "WGS" else "CO2"
+    gas_prod = "CO2" if reaction == "WGS" else "CO"
     massfracs_in = get_Y_dict(gas_array[0])
     massfracs_out = get_Y_dict(gas_array[-1])
-    conversion_CO2 = (massfracs_in['CO2']-massfracs_out['CO2'])/massfracs_in['CO2']
-    print(f'Conversion of CO2        = {conversion_CO2*100:+12.6f} [%]')
-    # Calculate the conversion of CO2 and the tof of CO.
-    mol_weight_CO = 28 # [kg/kmol]
-    mass_flow_CO = (massfracs_out['CO']-massfracs_in['CO'])*mass_flow_rate # [kg/s]
-    tof_CO = mass_flow_CO/mol_weight_CO/cat_sites_tot # [1/s]
-    print(f'Turnover frequency of CO = {tof_CO:+12.6f} [1/s]')
+    conversion_reac = (
+        (massfracs_in[gas_reac]-massfracs_out[gas_reac])/massfracs_in[gas_reac]
+    )
+    print(f'Conversion of {gas_reac} = {conversion_reac*100:+12.6f} [%]')
+    mol_weight_prod = 44 if reaction == "WGS" else 28 # [kg/kmol]
+    mass_flow_prod = (
+        (massfracs_out[gas_prod]-massfracs_in[gas_prod])*mass_flow_rate # [kg/s]
+    )
+    tof_prod = mass_flow_prod/mol_weight_prod/cat_sites_tot # [1/s]
+    print(f'Turnover frequency of {gas_prod} = {tof_prod:+12.6e} [1/s]')
+    
+    # Get the coverages.
+    coverages = {spec: cat[spec].coverages[0] for spec in cat.species_names}
+    print("\n- Coverages.")
+    for spec, coverage in coverages.items():
+        print(f"{spec.ljust(20)} {coverage:7.4e}")
     
     # Calculate elements molar balance.
     delta_moles_fracts = molar_balance_of_element(
@@ -219,7 +273,8 @@ def main(
         paths_contrib[name] = abs(r_net)
     r_sum = sum(paths_contrib.values())
     paths_contrib = {
-        str(name): float(r_net/r_sum) for name, r_net in paths_contrib.items()}
+        name: float(r_net/r_sum) for name, r_net in paths_contrib.items()
+    }
     print("\n- Reaction paths contributions.")
     for name, value in paths_contrib.items():
         print(f'Contribution of {name:10s} = {value*100:+7.2f} [%]')
@@ -232,7 +287,7 @@ def main(
             sim=sim,
             mdot=mass_flow_rate,
             upstream=upstream,
-            gas_spec_target="CO",
+            gas_spec_target=gas_prod,
             multip_value=1.05,
             return_dict=True,
         )
@@ -243,13 +298,24 @@ def main(
         sum_DRC = np.sum([DRC_dict[react] for react in DRC_dict])
         print(f'Sum DRC = {sum_DRC:+7.4f}')
 
+    # Update names for yaml file.
+    coverages_yaml = {}
+    for name, coverage in coverages.items():
+        name_yaml = name.replace("(Rh)", "*").replace("(Rh,Rh)", "**")
+        coverages_yaml[name_yaml] = float(coverage)
+    if calculate_DRC is True:
+        DRC_yaml = {}
+        for name, drc in DRC_dict.items():
+            name_yaml = name.replace("(Rh)", "*").replace("(Rh,Rh)", "**")
+            name_yaml = name_yaml.replace(" ", "")
+            DRC_yaml[name_yaml] = float(drc)
+
     # Store results in dictionary.
-    yaml_results = 'results_extra.yaml' if extrapolation is True else 'results.yaml'
+    yaml_results = f"results_{task}_{reaction}.yaml"
+    results_all = {}
     if os.path.isfile(yaml_results):
         with open(yaml_results, 'r') as fileobj:
             results_all = yaml.safe_load(fileobj)
-    else:
-        results_all = {}
     
     # Models names.
     models_name = "+".join([model_adsorbates, model_reactions])
@@ -265,10 +331,13 @@ def main(
     if surface_name not in results_all[models_name]:
         results_all[models_name][surface_name] = {}
     results_all[models_name][surface_name][e_index] = {
-        "CO TOF": float(tof_CO),
-        "CO2 conv": float(conversion_CO2),
+        "TOF": float(tof_prod),
+        "conv": float(conversion_reac),
         "paths": paths_contrib,
+        "coverages": coverages_yaml,
     }
+    if calculate_DRC is True:
+        results_all[models_name][surface_name][e_index]["DRC"] = DRC_yaml
     
     # Custom YAML representer for floats.
     def float_representer(dumper, value):
@@ -284,7 +353,7 @@ def main(
             data=results_all,
             stream=fileobj,
             default_flow_style=None,
-            width=150,
+            width=1000,
             sort_keys=False,
         )
 
@@ -294,84 +363,7 @@ def main(
 
 if __name__ == '__main__':
     start = timeit.default_timer()
-    # Parameters.
-    extrapolation = True
-    ensemble = True
-    # Materials.
-    if extrapolation is True:
-        material_list = [
-            'Pt',
-            'Ru',
-            'Ag',
-            'Os',
-            'Fe',
-            'Ir',
-            'Rh+Ni1',
-            'Rh+Fe1',
-            'Pd+Pt1',
-            'Pd+Ni1',
-            'Co+Rh1',
-            'Co+Pd1',
-            'Ni+Rh1',
-            'Ni+Pd1',
-            'Cu+Mn1',
-            'Cu+Fe1',
-            'Cu+Os1',
-            'Au+Mo1',
-            'Au+Ir1',
-            'Au+Os1',
-            'Pt+Cu1',
-            'Pt+Mn1',
-            'Ru+Ni1',
-            'Ru+Pt1',
-            'Ag+Ni1',
-            'Ag+Pt1',
-            'Os+Cu1',
-            'Os+Rh1',
-            'Fe+Cu1',
-            'Fe+Rh1',
-            'Ir+Os1',
-            'Ir+Rh1',
-        ]
-    else:
-        material_list = [
-            'Rh',
-            'Pd',
-            'Co',
-            'Ni',
-            'Cu',
-            'Au',
-            'Rh+Pt1',
-            'Pd+Rh1',
-            'Co+Pt1',
-            'Ni+Ga1',
-            'Cu+Zn1',
-            'Cu+Pt1',
-            'Cu+Rh1',
-            'Cu+Ni1',
-            'Au+Ag1',
-            'Au+Pt1',
-            'Au+Rh1',
-            'Au+Ni1',
-        ]
-    # Miller indices.
-    miller_index_list = [
-        '100',
-        '111',
-    ]
-    
-    # Main loop.
-    e_index_list = [0, 1, 2, 3, 4] if ensemble is True else [None]
-    for material in material_list:
-        for miller_index in miller_index_list:
-            for e_index in e_index_list:
-                print(f'\nSurface = {material}({miller_index})')
-                main(
-                    material=material,
-                    miller_index=miller_index,
-                    e_index=e_index,
-                    extrapolation=extrapolation,
-                )
+    main()
     stop = timeit.default_timer()
     print(f'\nExecution time = {stop-start:6.3} s\n')
 

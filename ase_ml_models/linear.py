@@ -25,6 +25,8 @@ def tsr_prepare(
         species = atoms.info["species"]
         if surface not in energies_ref_dict:
             energies_ref_dict[surface] = {}
+        if atoms.info["E_form"] is None:
+            continue
         if atoms.info["E_form"] < energies_ref_dict[surface].get(species, np.inf):
             energies_ref_dict[surface][species] = atoms.info["E_form"]
     # Add the reference energies to the atoms objects.

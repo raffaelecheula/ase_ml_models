@@ -41,14 +41,17 @@ def main(struct="TS"):
             method="ase",
             ensure_bonding=True,
         )
+    # Parameters.
+    rot_x = +20
+    rot_y = -125
     # Write graph.
     ax = plot_connectivity(atoms=atoms, show_plot=False, alpha=1.0)
     ax.elev = rot_x
     ax.azim = -90-rot_y
-    savefig(f"graph_{struct}.png", dpi=300, transparent=True)
+    savefig(f"{struct}_graph.png", dpi=300, transparent=True)
     # Write struture.
     atoms.write(
-        filename=f"image_{struct}.png",
+        filename=f"{struct}_image.png",
         scale=300,
         maxwidth=500,
         radii=0.95,

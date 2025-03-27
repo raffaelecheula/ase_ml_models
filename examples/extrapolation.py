@@ -4,7 +4,6 @@
 
 import os
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
 from ase.db import connect
 from sklearn.metrics import mean_absolute_error, mean_squared_error
@@ -33,16 +32,15 @@ def main():
     ensemble = True
     add_ref_atoms = True
     # Model selection.
-    model_name = "SKLearn" # Linear | SKLearn | WWLGPR
+    model_name = "Linear" # Linear | SKLearn | WWLGPR
     model_sklearn = "LightGBM" # RandomForest | XGBoost | LightGBM
     update_features = True
     model_name_ref = model_name[:]
     # Model parameters.
-    target = "E_act" if species_type == "reactions" else "E_form"
     if model_name == "Linear":
         model_name = "TSR" if species_type == "adsorbates" else "BEP"
-    if model_name_ref == "Linear":
-        model_name_ref = "TSR" if species_type == "adsorbates" else "BEP"
+        model_name_ref = "TSR"
+    target = "E_act" if species_type == "reactions" else "E_form"
     model_params_dict = {
         "TSR": {"keys_TSR": ["species"] if most_stable else ["species", "site"]},
         "BEP": {"keys_BEP": ["species", "miller_index"]},
@@ -59,12 +57,6 @@ def main():
         "HCOO*": ["O*"],
         "OH*": ["O*"],
     }
-    color_dict = {
-        "TSR": "darkcyan",
-        "BEP": "darkcyan",
-        "SKLearn": "orchid",
-        "WWLGPR": "crimson",
-    }
     # Model hyperparameters.
     model_params = model_params_dict[model_name]
     # Get optimized hyperparameters.
@@ -77,18 +69,17 @@ def main():
     )
     
     # Read Ase train database.
-    db_train_name = f"atoms_{species_type}_DFT_bulk.db"
+    db_train_name = f"databases/atoms_{species_type}_DFT_database.db"
     db_train = connect(db_train_name)
     kwargs = {"most_stable": True} if most_stable is True else {}
     atoms_list = get_atoms_list_from_db(db_ase=db_train, **kwargs)
     # Read Ase extra database.
-    db_extra_name = f"atoms_{species_type}_DFT_extra_empty.db"
+    db_extra_name = f"databases/atoms_{species_type}_DFT_extrapol_empty.db"
     db_extra = connect(db_extra_name)
-    kwargs = {"most_stable": True} if most_stable is True else {}
-    atoms_extra = get_atoms_list_from_db(db_ase=db_extra, **kwargs)
+    atoms_extra = get_atoms_list_from_db(db_ase=db_extra)
     # Reference atoms to add to the train sets.
     if add_ref_atoms is True and species_type == "adsorbates":
-        db_add_name = f"atoms_{species_type}_DFT_extra_add.db"
+        db_add_name = f"databases/atoms_{species_type}_DFT_extrapol_add.db"
         db_add = connect(db_add_name)
         kwargs = {"most_stable": True} if most_stable is True else {}
         atoms_add = get_atoms_list_from_db(db_ase=db_add, **kwargs)
@@ -97,15 +88,9 @@ def main():
     
     # Update features from an Ase database.
     if update_features is True and species_type == "reactions":
-        db_ads_name = f"atoms_adsorbates_{model_name_ref}_extra.db"
+        db_ads_name = f"databases/atoms_adsorbates_{model_name_ref}_extrapol.db"
         db_ads = connect(db_ads_name)
         update_ts_atoms(atoms_list=atoms_extra, db_ads=db_ads)
-    # Initialize cross-validation.
-    crossval = get_crossval(
-        crossval_name=crossval_name,
-        n_splits=n_splits,
-        random_state=random_state,
-    )
     # Preprocess the data.
     if model_name == "TSR":
         from ase_ml_models.linear import tsr_prepare
@@ -122,8 +107,16 @@ def main():
     print(f"n train: {len(atoms_list)}")
     print(f"n extra: {len(atoms_extra)}")
     print(f"n added: {len(atoms_add)}")
+    
+    # Initialize cross-validation.
+    crossval = get_crossval(
+        crossval_name=crossval_name,
+        n_splits=n_splits,
+        random_state=random_state,
+    )
     # Prepare Ase database.
-    db_model = connect(f"atoms_{species_type}_{model_name}_extra.db", append=False)
+    db_model_name = f"databases/atoms_{species_type}_{model_name}_extrapol.db"
+    db_model = connect(db_model_name, append=False)
     # Extrapolation.
     if ensemble is True:
         indices = list(range(len(atoms_list)))

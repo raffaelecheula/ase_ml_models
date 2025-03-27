@@ -51,7 +51,7 @@ def sklearn_preprocess(
     # Store the features in the atoms objects.
     for ii, atoms in enumerate(atoms_list):
         atoms.info["features_mod"] = features[ii]
-        atoms.info["features_mod_names"] = features[ii]
+        atoms.info["features_mod_names"] = features_proc_names
 
 # -------------------------------------------------------------------------------------
 # SKLEARN TRAIN

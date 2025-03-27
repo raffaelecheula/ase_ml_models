@@ -105,7 +105,7 @@ def crossvalidation(
     indices = list(range(len(atoms_list)))
     y_test_all = []
     y_pred_all = []
-    y_err_all = []
+    indices_all = []
     for ii, (indices_train, indices_test) in enumerate(
         crossval.split(X=indices, y=stratify, groups=groups)
     ):
@@ -142,12 +142,13 @@ def crossvalidation(
         # Store the results in lists.
         y_test_all += [yy for kk, yy in enumerate(y_test) if kk not in excluded]
         y_pred_all += [yy for kk, yy in enumerate(y_pred) if kk not in excluded]
-        y_err_all += list(np.abs(np.array(y_pred_all)-np.array(y_test_all)))
+        indices_all += [ii for kk, ii in enumerate(indices_test) if kk not in excluded]
     # Return the results.
     results = {
         "y_test": y_test_all,
         "y_pred": y_pred_all,
-        "y_err": y_err_all,
+        "y_err": list(np.abs(np.array(y_pred_all)-np.array(y_test_all))),
+        "indices": indices_all,
     }
     return results
 
@@ -178,8 +179,8 @@ def ensemble_crossvalidation(
     indices = list(range(len(atoms_list)))
     y_test_all = []
     y_pred_all = []
-    y_err_all = []
     y_std_all = []
+    indices_all = []
     for ii, (indices_train, indices_test) in enumerate(
         crossval.split(X=indices, y=stratify, groups=groups)
     ):
@@ -234,14 +235,15 @@ def ensemble_crossvalidation(
         # Store the results in lists.
         y_test_all += [yy for kk, yy in enumerate(y_test) if kk not in excluded]
         y_pred_all += [yy for kk, yy in enumerate(y_pred) if kk not in excluded]
-        y_err_all += list(np.abs(np.array(y_pred_all)-np.array(y_test_all)))
         y_std_all += [yy for kk, yy in enumerate(y_std) if kk not in excluded]
+        indices_all += [ii for kk, ii in enumerate(indices_test) if kk not in excluded]
     # Return the results.
     results = {
         "y_test": y_test_all,
         "y_pred": y_pred_all,
-        "y_err": y_err_all,
+        "y_err": list(np.abs(np.array(y_pred_all)-np.array(y_test_all))),
         "y_std": y_std_all,
+        "indices": indices_all,
     }
     return results
 
@@ -345,6 +347,57 @@ def update_ts_atoms(
         for key in ["E_first", "E_last", "ΔE_react"]:
             index = atoms.info["features_ave_names"].index(key)
             atoms.info["features_ave"][index] = atoms.info[key]
+
+# -------------------------------------------------------------------------------------
+# GET MEANS AND STD BINS
+# -------------------------------------------------------------------------------------
+
+def get_means_and_std_bins(
+    x_vect: list,
+    y_vect: list,
+    n_bins: int = 8,
+) -> list:
+    """Correct the uncertainty."""
+    x_vect = np.array(x_vect)
+    y_vect = np.array(y_vect)
+    indices = np.argsort(x_vect)
+    x_bins = np.array_split(x_vect[indices], n_bins)
+    y_bins = np.array_split(y_vect[indices], n_bins)
+    x_means = [np.mean(xx) for xx in x_bins]
+    y_means = [np.mean(yy) for yy in y_bins]
+    y_stds = [np.std(yy) for yy in y_bins]
+    return x_means, y_means, y_stds
+
+# -------------------------------------------------------------------------------------
+# CALIBRATE UNCERTAINTY
+# -------------------------------------------------------------------------------------
+
+def calibrate_uncertainty(
+    results: dict,
+    n_bins: int = 8,
+    fit_intercept: bool = False,
+) -> dict:
+    """Correct the uncertainty."""
+    if "y_std" not in results:
+        return results
+    # Get bins.
+    x_means, y_means, y_stds = get_means_and_std_bins(
+        x_vect=results["y_err"],
+        y_vect=results["y_std"],
+        n_bins=n_bins,
+    )
+    # Correct the uncertainty.
+    from sklearn.linear_model import LinearRegression
+    regr = LinearRegression(fit_intercept=fit_intercept)
+    regr.fit(np.array(x_means).reshape(-1, 1), np.array(y_means))
+    m_line, a_line = regr.coef_[0], regr.intercept_
+    y_means = [(yy-a_line)/m_line for yy in y_means]
+    y_stds = [yy/m_line for yy in y_stds]
+    results["y_std"] = [(yy-a_line)/m_line for yy in results["y_std"]]
+    if fit_intercept is True:
+        results["y_std"] = [yy if yy > 0. else 0. for yy in results["y_std"]]
+    # Return the calibrate uncertainty.
+    return results
 
 # -------------------------------------------------------------------------------------
 # PARITY PLOT
@@ -466,6 +519,123 @@ def violin_plot(
                 "linewidth": 1.5,
             },
         )
+    return ax
+
+# -------------------------------------------------------------------------------------
+# UNCERTAINTY PLOT
+# -------------------------------------------------------------------------------------
+
+def uncertainty_plot(
+    results: dict,
+    n_bins: int = 8,
+    ax: object = None,
+    lims: list = [0.0, 1.0],
+    alpha: float = 0.2,
+    color: str = "crimson",
+) -> object:
+    """Uncertainty vs errors plot."""
+    if ax is None:
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots(figsize=(6, 6), dpi=300)
+    # Get means and std of bins.
+    x_means, y_means, y_stds = get_means_and_std_bins(
+        x_vect=results["y_err"],
+        y_vect=results["y_std"],
+        n_bins=n_bins,
+    )
+    # Plot the data.
+    ax.plot(lims, lims, 'k--')
+    ax.errorbar(
+        x=x_means,
+        y=y_means,
+        yerr=y_stds,
+        ms=5,
+        fmt="o",
+        color="black",
+        capsize=3,
+    )
+    points = ax.scatter(
+        x=results["y_err"],
+        y=results["y_std"],
+        s=15,
+        alpha=alpha,
+        color=color,
+    )
+    ax.set_xlabel("Errors [eV]", fontdict={"fontsize": 16})
+    ax.set_ylabel("Uncertainty [eV]", fontdict={"fontsize": 16})
+    ax.set_xlim(*lims)
+    ax.set_ylim(*lims)
+    ax.tick_params(labelsize=13, width=1.5, length=6, direction="inout")
+    for spine in ax.spines.values():
+        spine.set_linewidth(1.5)
+    return ax
+
+# -------------------------------------------------------------------------------------
+# SPECIES ERRORS PLOT
+# -------------------------------------------------------------------------------------
+
+def groups_errors_plot(
+    results: dict,
+    atoms_list: list,
+    key: str = "species",
+    ax: object = None,
+    ylim: list = [0.0, 1.5],
+    alpha: float = 0.8,
+    color: str = "crimson",
+    modify_groups: bool = True,
+    replace_dict: dict = {},
+    violin_plot: bool = True,
+) -> object:
+    """ Species errors plot."""
+    group_list = [atoms_list[ii].info[key] for ii in results["indices"]]
+    if modify_groups is True:
+        from ase_ml_models.utilities import modify_name
+        group_list = [modify_name(name, replace_dict) for name in group_list]
+    group_dict = {}
+    for group, y_err in zip(group_list, results["y_err"]):
+        if group not in group_dict:
+            group_dict[group] = []
+        group_dict[group].append(y_err)
+    # Plot the data.
+    if ax is None:
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots(figsize=(len(group_dict)*0.45+1.5, 6), dpi=300)
+    if violin_plot is True:
+        violins = ax.violinplot(
+            dataset=group_dict.values(),
+            showmeans=False,
+            showmedians=False,
+            showextrema=False,
+        )["bodies"]
+        for violin in violins:
+            violin.set_facecolor(color)
+            violin.set_alpha(alpha)
+            violin.set_edgecolor("k")
+        ax.errorbar(
+            x=range(1, len(group_dict)+1),
+            y=[np.mean(ii) for ii in group_dict.values()],
+            yerr=[np.std(ii) for ii in group_dict.values()],
+            ms=5,
+            fmt="o",
+            color="black",
+            capsize=2,
+        )
+    else:
+        ax.bar(
+            x=range(1, len(group_dict)+1),
+            height=[np.mean(ii) for ii in group_dict.values()],
+            yerr=[np.std(ii) for ii in group_dict.values()],
+            color=color,
+            alpha=alpha,
+            capsize=5,
+        )
+    ax.set_xticks(list(range(1, len(group_dict)+1)))
+    ax.set_xticklabels(group_dict.keys(), rotation=90, ha="center")
+    ax.set_ylabel("Errors [eV]", fontdict={"fontsize": 16})
+    ax.set_ylim(*ylim)
+    ax.tick_params(labelsize=13, width=1.5, length=6, direction="inout")
+    for spine in ax.spines.values():
+        spine.set_linewidth(1.5)
     return ax
 
 # -------------------------------------------------------------------------------------

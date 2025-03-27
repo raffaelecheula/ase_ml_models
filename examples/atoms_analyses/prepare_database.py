@@ -78,8 +78,8 @@ def main():
         write_atoms_list_to_db(
             atoms_list=atoms_list,
             db_ase=db_ase,
-            keys_store=["name"],
-            keys_match=["name"],
+            keys_store=[],
+            keys_match=None,
         )
     # Write features to file.
     if filename_features is not None:
