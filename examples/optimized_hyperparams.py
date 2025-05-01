@@ -60,23 +60,13 @@ def get_optimized_hyperparams(
     
     if model_name == "WWLGPR" and species_type == "adsorbates":
         model_params["hyperparams"] = {
-            
-            "inner_weight": 1.00,
-            "outer_weight": 0.88,
-            "gpr_reg": 0.0186,
-            "gpr_len": 12.9,
-            "edge_s_s": 0.00,
-            "edge_s_a": 0.38,
-            "edge_a_a": 0.52,
-            
-        #    "inner_weight": 1.00,
-        #    "outer_weight": 0.20,
-        #    "gpr_reg": 0.0300,
-        #    "gpr_len": 100.0,
-        #    "edge_s_s": 0.00,
-        #    "edge_s_a": 1.00,
-        #    "edge_a_a": 0.00,
-        
+            "inner_weight": 0.64,
+            "outer_weight": 0.17,
+            "gpr_reg": 0.008,
+            "gpr_len": 70.,
+            "edge_s_s": 0.90,
+            "edge_s_a": 0.90,
+            "edge_a_a": 0.90,
         }
     
     if model_name == "WWLGPR" and species_type == "reactions":
@@ -89,15 +79,6 @@ def get_optimized_hyperparams(
             "edge_s_s": 0.50,
             "edge_s_a": 1.00,
             "edge_a_a": 0.70,
-        
-        #    "inner_weight": 1.00,
-        #    "outer_weight": 0.20,
-        #    "gpr_reg": 0.0300,
-        #    "gpr_len": 100.0,
-        #    "edge_s_s": 0.00,
-        #    "edge_s_a": 1.00,
-        #    "edge_a_a": 0.00,
-        
         }
     return model_params
     

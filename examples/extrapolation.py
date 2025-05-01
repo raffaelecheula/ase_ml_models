@@ -24,7 +24,7 @@ def main():
     # Cross-validation parameters.
     species_type = "adsorbates" # adsorbates | reactions
     crossval_name = "StratifiedGroupKFold" # StratifiedKFold | StratifiedGroupKFold
-    key_groups = "surface" # surface | bulk_elements
+    key_groups = "surface" # surface | elements
     key_stratify = "species"
     n_splits = 6
     random_state = 42
@@ -32,7 +32,7 @@ def main():
     ensemble = True
     add_ref_atoms = True
     # Model selection.
-    model_name = "Linear" # Linear | SKLearn | WWLGPR
+    model_name = "WWLGPR" # Linear | SKLearn | WWLGPR
     model_sklearn = "LightGBM" # RandomForest | XGBoost | LightGBM
     update_features = True
     model_name_ref = model_name[:]

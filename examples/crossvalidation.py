@@ -31,7 +31,7 @@ def main():
     # Cross-validation parameters.
     species_type = "adsorbates" # adsorbates | reactions
     crossval_name = "StratifiedGroupKFold" # StratifiedKFold | StratifiedGroupKFold
-    key_groups = "surface" # surface | bulk_elements
+    key_groups = "surface" # surface | elements
     key_stratify = "species"
     n_splits = 6
     random_state = 42
@@ -41,8 +41,8 @@ def main():
     add_ref_atoms = True
     exclude_add = True
     # Model selection.
-    model_name = "SKLearn" # Linear | SKLearn | WWLGPR
-    model_sklearn = "LightGBM" # RandomForest | XGBoost | LightGBM
+    model_name = "SKLearn" # Linear | SKLearn | WWLGPR | Grakel
+    model_sklearn = "RandomForest" # RandomForest | XGBoost | LightGBM
     update_features = False
     model_name_ref = model_name[:]
     # Model parameters.
@@ -55,6 +55,7 @@ def main():
         "BEP": {"keys_BEP": ["species", "miller_index"]},
         "SKLearn": {"target": target, "model": None, "hyperparams": None},
         "WWLGPR": {"target": target, "hyperparams": None},
+        "Grakel": {"target": target, "hyperparams": None},
     }
     species_ref = ["CO*", "H*", "O*"]
     fixed_TSR = {
@@ -110,6 +111,9 @@ def main():
     elif model_name == "SKLearn":
         from ase_ml_models.sklearn import sklearn_preprocess
         sklearn_preprocess(atoms_list=atoms_list+atoms_add)
+    elif model_name == "Grakel":
+        from ase_ml_models.grakel import grakel_preprocess
+        grakel_preprocess(atoms_list=atoms_list+atoms_add)
     
     # Print number of atoms.
     print(f"n atoms: {len(atoms_list)}")
@@ -190,7 +194,10 @@ def main():
 # -------------------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    import timeit
+    start = timeit.default_timer()
     main()
+    print(f"Execution time: {timeit.default_timer() - start:.2f} s")
 
 # -------------------------------------------------------------------------------------
 # END

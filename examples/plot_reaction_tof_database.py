@@ -41,7 +41,7 @@ def main():
     surfaces_BEP = []
     for jj, surface in enumerate(results_BEP):
         tof_list = [results_BEP[surface][ii]["TOF"] for ii in range(5)]
-        tof_list = [tof if tof > 1e-10 else 1e-10 for tof in tof_list]
+        tof_list = [tof if tof > 1e-20 else 1e-20 for tof in tof_list]
         ltof_list = [np.log10(tof) for tof in tof_list]
         ltofs_BEP.append(np.mean(ltof_list))
         lstds_BEP.append(np.std(ltof_list))
@@ -53,7 +53,7 @@ def main():
     surfaces_WWL = []
     for jj, surface in enumerate(results_WWL):
         tof_list = [results_WWL[surface][ii]["TOF"] for ii in range(5)]
-        tof_list = [tof if tof > 1e-10 else 1e-10 for tof in tof_list]
+        tof_list = [tof if tof > 1e-20 else 1e-20 for tof in tof_list]
         ltof_list = [np.log10(tof) for tof in tof_list]
         ltofs_WWL.append(np.mean(ltof_list))
         lstds_WWL.append(np.std(ltof_list))
@@ -176,7 +176,7 @@ def main():
     ax = uncertainty_plot(
         results=results,
         color="crimson",
-        lims=[0., 5],
+        lims=[0., 5.],
         n_bins=6,
     )
     plt.savefig(f"{dirname}/uncertainty_WWL-GPR.png", dpi=300)

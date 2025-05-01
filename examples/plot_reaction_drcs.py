@@ -18,7 +18,8 @@ def main():
 
     # Parameters.
     reaction = "RWGS" # WGS | RWGS
-    task = "extrapol" # database | extrapol
+    task = "database" # database | extrapol
+    half = None # 1 | 2
     models = {
         "database": "DFT+DFT",
         "extrapol": "TSR+BEP", # TSR+BEP | SKLearn+SKLearn | WWLGPR+WWLGPR
@@ -62,33 +63,50 @@ def main():
         else:
             drcs[:, ii] = drcs[:, ii] / np.sum(drcs[:, ii]) * 100
     
-    # Turnover frequencies plot.
-    fig, ax = plt.subplots(figsize=(len(surfaces)*0.3, 5), dpi=150)
+    # Get half data for extrapolation task.
+    if task == "extrapol":
+        half_num = len(surfaces) // 2
+        if half == 1:
+            surfaces = surfaces[:half_num]
+            drcs = drcs[:, :half_num]
+        elif half == 2:
+            surfaces = surfaces[half_num:]
+            drcs = drcs[:, half_num:]
+    
+    # Degrees of rate control plot.
+    fig, ax = plt.subplots(figsize=(13, 4), dpi=200)
     for ii, path in enumerate(drcs_dict):
         ax.bar(
             x=surfaces,
             height=drcs[ii],
             color=drcs_dict[path],
-            label=modify_name(path, replace_dict={"<=>": "→"}),
+            label=modify_name(path, replace_dict={"<=>": " ⇌ "}),
             bottom=None if ii == 0 else np.sum(drcs[:ii], axis=0),
         )
     ax.set_xlim(-0.5, len(surfaces)-0.5)
     ax.set_ylim(0, 100)
     ax.set_ylabel("Degree of rate control [%]")
     ax.tick_params(axis="x", rotation=90)
+    # Customize legend.
     handles, labels = ax.get_legend_handles_labels()
     selected = [4, 5, 6, 7, 8, 9, 10]
-    ax.legend(
-        handles=[handles[ii] for ii in selected],
-        labels=[labels[ii] for ii in selected],
-        edgecolor="black",
-        framealpha=1.,
-        loc="center right",
-    )
-    plt.subplots_adjust(bottom=0.25, top=0.95, left=0.10, right=0.95)
+    if task == "extrapol":
+        ax.legend(
+            handles=[handles[ii] for ii in selected],
+            labels=[labels[ii] for ii in selected],
+            edgecolor="black",
+            framealpha=1.,
+            loc="center right",
+            bbox_to_anchor=(1.26, 0.5)
+        )
+        plt.subplots_adjust(bottom=0.30, top=0.95, left=0.08, right=0.80)
+    else:
+        plt.subplots_adjust(bottom=0.30, top=0.95, left=0.08, right=0.89)
+    # Save figure.
     dirname = f"images/reaction_{reaction}_{task}"
     os.makedirs(dirname, exist_ok=True)
-    plt.savefig(f"{dirname}/reaction_drcs_{models[task]}.png", dpi=300)
+    num = f"_{half}" if task == "extrapol" and half is not None else ""
+    plt.savefig(f"{dirname}/reaction_drcs_{models[task]}{num}.png", dpi=300)
 
 # -------------------------------------------------------------------------------------
 # IF NAME MAIN

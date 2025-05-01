@@ -3,7 +3,8 @@
 old/
 tests/
 plots/
-images/
+images*/
+hyperparams*/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

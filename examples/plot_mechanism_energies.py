@@ -18,7 +18,7 @@ from ase_ml_models.utilities import modify_name
 def main():
 
     # Parameters.
-    task = "extrapol" # database | extrapol
+    task = "database" # database | extrapol
     models = {
         "database": "DFT+DFT",
         "extrapol": "TSR+BEP", # TSR+BEP | SKLearn+SKLearn | WWLGPR+WWLGPR

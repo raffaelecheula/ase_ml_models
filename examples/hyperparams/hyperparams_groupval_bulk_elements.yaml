@@ -1,4 +1,0 @@
-WWLGPR:
-  hyperparams: {inner_weight: 7.59379E-01, outer_weight: 2.63453E-02, gpr_reg: 8.24321E-03, gpr_len: 7.75274E+01, edge_s_s: 5.43947E-01, edge_s_a: 5.38721E-01, edge_a_a: 4.03055E-02, cutoff: 2, inner_cutoff: 1, gpr_sigma: 1}
-  MAE: 3.52944E-01
-  RMSE: 4.59090E-01

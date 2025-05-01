@@ -75,6 +75,21 @@ def train_model_and_predict(
             target=model_params.get("target", "E_form"),
         )
         results = {"y_pred": y_pred, "model": model}
+    # Grakel model.
+    elif model_name == "Grakel":
+        from ase_ml_models.grakel import grakel_train, grakel_predict
+        # Train the Grakel model.
+        model = grakel_train(
+            atoms_train=atoms_train,
+            **model_params,
+        )
+        # Predict test data.
+        y_pred = grakel_predict(
+            atoms_test=atoms_test,
+            model=model,
+            target=model_params.get("target", "E_form"),
+        )
+        results = {"y_pred": y_pred, "model": model}
     # Return the results.
     return results
 
@@ -269,11 +284,26 @@ def get_crossval(
         "GroupKFold": GroupKFold,
         "StratifiedGroupKFold": StratifiedGroupKFold,
     }
-    crossval = crossval_dict[crossval_name](
-        n_splits=n_splits,
-        shuffle=True,
-        random_state=random_state,
-    )
+    if crossval_name == "GroupKFold":
+        crossval = crossval_dict[crossval_name](n_splits=n_splits)
+    else:
+        crossval = crossval_dict[crossval_name](
+            n_splits=n_splits,
+            shuffle=True,
+            random_state=random_state,
+        )
+    #if group is True:
+    #    kwargs = {"n_splits": n_splits}
+    #    if stratified is True:
+    #        crossval = StratifiedGroupKFold(**kwargs)
+    #    else:
+    #        crossval = StratifiedKFold(**kwargs)
+    #else:
+    #    kwargs = {"n_splits": n_splits, "shuffle": True, "random_state": random_state}
+    #    if stratified is True:
+    #        crossval = StratifiedKFold(**kwargs)
+    #    else:
+    #        crossval = KFold(**kwargs)
     return crossval
 
 # -------------------------------------------------------------------------------------
@@ -397,6 +427,8 @@ def calibrate_uncertainty(
     if fit_intercept is True:
         results["y_std"] = [yy if yy > 0. else 0. for yy in results["y_std"]]
     # Return the calibrate uncertainty.
+    results["m_calib"] = m_line
+    results["a_calib"] = a_line
     return results
 
 # -------------------------------------------------------------------------------------
@@ -554,13 +586,13 @@ def uncertainty_plot(
         color="black",
         capsize=3,
     )
-    points = ax.scatter(
-        x=results["y_err"],
-        y=results["y_std"],
-        s=15,
-        alpha=alpha,
-        color=color,
-    )
+    #points = ax.scatter(
+    #    x=results["y_err"],
+    #    y=results["y_std"],
+    #    s=15,
+    #    alpha=alpha,
+    #    color=color,
+    #)
     ax.set_xlabel("Errors [eV]", fontdict={"fontsize": 16})
     ax.set_ylabel("Uncertainty [eV]", fontdict={"fontsize": 16})
     ax.set_xlim(*lims)

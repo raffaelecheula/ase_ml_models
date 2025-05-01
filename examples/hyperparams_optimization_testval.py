@@ -38,9 +38,9 @@ def main():
     most_stable = False
     add_ref_atoms = True
     exclude_add = True
-    fraction_data = 0.15
+    fraction_data = 1.00
     # Model selection.
-    model_name = "WWLGPR" # Linear | SKLearn | WWLGPR
+    model_name = "SKLearn" # Linear | SKLearn | WWLGPR
     model_sklearn = "LightGBM" # RandomForest | XGBoost | LightGBM
     update_features = False
     model_name_ref = model_name[:]
@@ -125,10 +125,10 @@ def main():
         }
     
     # Yaml file.
-    os.makedirs("hyperparams", exist_ok=True)
+    os.makedirs("hyperparams_testval", exist_ok=True)
     task = f"groupval_{key_groups}" if "Group" in crossval_name else "crossval"
     model = model_name if model_name != "SKLearn" else model_sklearn
-    yaml_results = f"hyperparams/hyperparams_{task}.yaml"
+    yaml_results = f"hyperparams_testval/hyperparams_{task}.yaml"
     # Customize YAML writer.
     customize_yaml(float_format="{:10.5E}")
     
@@ -139,6 +139,9 @@ def main():
         hyperparams = {key: hyperparams_scan[key][ii] for key in hyperparams_scan}
         hyperparams.update(hyperparams_fixed)
         model_params["hyperparams"] = hyperparams
+        print("\nHyperparameters:")
+        for key, value in hyperparams.items():
+            print(f"{key}: {value}")
         # Cross-validation.
         results = crossvalidation(
             atoms_list=atoms_list,
@@ -152,27 +155,59 @@ def main():
             model_params=model_params,
             print_error_thr=np.inf,
         )
-        y_test = results["y_test"]
-        y_pred = results["y_pred"]
+        # Split the data into val and test sets.
+        indices = list(range(len(results["y_test"])))
+        random.Random(random_state).shuffle(indices)
+        half = len(indices) // 2
+        indices_A = indices[:half]
+        indices_B = indices[half:]
+        y_test_A = np.array(results["y_test"])[indices_A]
+        y_pred_A = np.array(results["y_pred"])[indices_A]
+        y_test_B = np.array(results["y_test"])[indices_B]
+        y_pred_B = np.array(results["y_pred"])[indices_B]
         # Calculate the MAE and the RMSE.
-        mae = mean_absolute_error(y_test, y_pred)
-        rmse = mean_squared_error(y_test, y_pred, squared=False)
-        print("Average results:")
-        print(f"TOT MAE:   {mae:7.4f} [eV]")
-        print(f"TOT RMSE:  {rmse:7.4f} [eV]")
+        mae_A = mean_absolute_error(y_test_A, y_pred_A)
+        rmse_A = mean_squared_error(y_test_A, y_pred_A, squared=False)
+        mae_B = mean_absolute_error(y_test_B, y_pred_B)
+        rmse_B = mean_squared_error(y_test_B, y_pred_B, squared=False)
+        print(f"Average results:")
+        print(f"TOT MAE A:  {mae_A:7.4f} [eV]")
+        print(f"TOT RMSE A: {rmse_A:7.4f} [eV]")
+        print(f"TOT MAE B:  {mae_B:7.4f} [eV]")
+        print(f"TOT RMSE B: {rmse_B:7.4f} [eV]")
         # Load the results.
         results_all = {}
         if os.path.isfile(yaml_results):
             with open(yaml_results, 'r') as fileobj:
                 results_all = yaml.safe_load(fileobj)
-        # Store the results.
-        if model not in results_all or results_all[model]["MAE"] > mae:
-            results_params = {
-                "hyperparams": hyperparams,
-                "MAE": mae,
-                "RMSE": rmse,
+        # Update the results.
+        update_yaml = False
+        if model not in results_all:
+            results_all[model] = {
+                "hyperparams_A": None,
+                "MAE_A": np.inf,
+                "RMSE_A": np.inf,
+                "hyperparams_B": None,
+                "MAE_B": np.inf,
+                "RMSE_B": np.inf,
             }
-            results_all[model] = convert_numpy_to_python(results_params)
+        if results_all[model]["MAE_A"] > mae_A:
+            results_all[model].update({
+                "hyperparams_B": hyperparams,
+                "MAE_B": mae_B,
+                "RMSE_B": rmse_B,
+            })
+            update_yaml = True
+        if results_all[model]["MAE_B"] > mae_A:
+            results_all[model].update({
+                "hyperparams_A": hyperparams,
+                "MAE_A": mae_A,
+                "RMSE_A": rmse_A,
+            })
+            update_yaml = True
+        # Store the results.
+        if update_yaml is True:
+            results_all[model] = convert_numpy_to_python(results_all[model])
             with open(yaml_results, 'w') as fileobj:
                 yaml.dump(
                     data=results_all,

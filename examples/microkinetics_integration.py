@@ -82,9 +82,9 @@ def kinetics_integration(
     reaction_indices = {"CO-O path": 4, "COO-H path": 6, "H-COO path": 7}
 
     # Set temperature and pressure of the simulation.
-    temperature_celsius = 300. # [C]
+    temperature_celsius = 500. # [C]
     temperature = units.Celsius_to_Kelvin(temperature_celsius) # [K]
-    pressure = 30 * units.atm # [Pa]
+    pressure = 1 * units.atm # [Pa]
     
     # Set molar fractions of gas species.
     if reaction == "WGS":

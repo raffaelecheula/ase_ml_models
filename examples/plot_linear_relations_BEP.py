@@ -24,7 +24,7 @@ def main():
     # Ase database.
     db_ase_name = "databases/atoms_reactions_DFT_database.db"
     most_stable = True
-    material_labels = True
+    material_labels = False
     time_lim = 1
     legend = False
     update_features = False
@@ -137,6 +137,8 @@ def main():
                     label=f"{label} BEP",
                 )
                 lines.append(line)
+        # Plot Eact = 0 line.
+        #ax.plot([-10, +10], [-10, +10], color="grey", linestyle="--", zorder=0)
         if material_labels is True:
             # Add text.
             for xx, yy, name in zip(deltae_all_list, e_act_all_list, surface_all_list):

@@ -30,8 +30,8 @@ def main():
     # Ase database.
     db_ase_name = "databases/atoms_adsorbates_DFT_database.db"
     most_stable = True
-    material_labels = False
-    time_lim = 100
+    material_labels = True
+    time_lim = 1
     get_heatmap = False
     legend = False
     
@@ -65,6 +65,7 @@ def main():
         "HCO*": ["CO*"],
         "HCOO*": ["O*"],
         "OH*": ["O*"],
+        "H2*": ["H*"],
     }
 
     # Prepare the data for Thermochemical Scaling Relations.
