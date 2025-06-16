@@ -5,6 +5,8 @@
 import os
 import numpy as np
 
+from ase_ml_models.workflow import change_target_energy
+
 # -------------------------------------------------------------------------------------
 # WWL-GPR HYPERPARAMETERS
 # -------------------------------------------------------------------------------------
@@ -131,7 +133,6 @@ def wwlgpr_train(
     )
     if optimize_hyperpars is True:
         optimize_hyperpars_wwlgpr(model=model, n_calls=n_calls)
-    print("WWL-GPR model trained.")
     return model
 
 # -------------------------------------------------------------------------------------
@@ -159,12 +160,10 @@ def wwlgpr_predict(
         test_target=test_energies,
         opt_hypers=opt_hypers,
     )
-    print(f"Test RMSE: {test_RMSE:7.4f} eV")
-    if target == "E_bind":
-        y_pred = [yy+atoms.info["E_form_gas"] for yy, atoms in zip(y_pred, atoms_test)]
-    elif target == "E_act":
-        y_pred = [yy+atoms.info["E_first"] for yy, atoms in zip(y_pred, atoms_test)]
-    return list(y_pred)
+    # Transform the predicted values.
+    y_pred = change_target_energy(y_pred=y_pred, atoms_test=atoms_test, target=target)
+    # Return predicted formation energies.
+    return y_pred
 
 # -------------------------------------------------------------------------------------
 # END

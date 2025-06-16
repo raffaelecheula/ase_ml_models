@@ -25,7 +25,7 @@ def main():
     db_ase_name = "databases/atoms_reactions_DFT_database.db"
     most_stable = True
     material_labels = False
-    time_lim = 1
+    time_lim = 100
     legend = False
     update_features = False
     
@@ -61,6 +61,8 @@ def main():
         'cCOOH*→CO*+OH*',
         'cCOOH*→COH*+O*',
         'tCOOH*→CO2*+H*'
+        #'HCOOH*→HCOO*+H*',
+        #'HCOOH*→cCOOH*+H*',
     ]
     
     # Get the data for the BEP relations.
@@ -96,8 +98,10 @@ def main():
         deltae_all_list = bep_data_all_dict[species]["ΔE_react"]
         e_act_all_list = bep_data_all_dict[species]["E_act"]
         surface_all_list = bep_data_all_dict[species]["surface"]
-        ax.set_xlim(min(deltae_all_list)-0.5, max(deltae_all_list)+0.5)
-        ax.set_ylim(min(e_act_all_list)-0.5, max(e_act_all_list)+0.5)
+        xlims = [min(deltae_all_list)-0.5, max(deltae_all_list)+0.5]
+        ylims = [min(e_act_all_list)-0.5, max(e_act_all_list)+0.5]
+        ax.set_xlim(*xlims)
+        ax.set_ylim(*ylims)
         base = 0.5 if max(deltae_all_list)-min(deltae_all_list) < 3.0 else 1.0
         ax.xaxis.set_major_locator(MultipleLocator(base=base))
         ax.yaxis.set_major_locator(MultipleLocator(base=base))
@@ -105,7 +109,7 @@ def main():
         texts = []
         points = []
         lines = []
-        for ii, key in enumerate(models_dict):
+        for ii, key in enumerate(colors_dict):
             # Label.
             facet, material = key.split(" ")
             material_2 = "SAA" if "sa-alloy" in material else "PM"
@@ -137,6 +141,17 @@ def main():
                     label=f"{label} BEP",
                 )
                 lines.append(line)
+                text = "$E_{act} = "+f"{intercept:+5.3f}{slope:+5.3f}"+"ΔE_{react}$"
+                ax.text(
+                    x=xlims[0]+(xlims[1]-xlims[0])*0.05,
+                    y=ylims[1]-(ylims[1]-ylims[0])*0.05*(ii+1.5),
+                    s=text,
+                    fontsize=14 if material_labels is True else 9,
+                    color=colors_dict[key],
+                    ha='left',
+                    va='bottom',
+                    zorder=2,
+                )
         # Plot Eact = 0 line.
         #ax.plot([-10, +10], [-10, +10], color="grey", linestyle="--", zorder=0)
         if material_labels is True:
@@ -155,7 +170,7 @@ def main():
             # Adjust text.
             texts, patches = adjust_text(
                 texts=texts,
-                expand=(1.3, 1.9),
+                expand=(1.8, 2.0),
                 arrowprops={"arrowstyle": '-', "color": 'grey', "alpha": 0.5},
                 prevent_crossings=False,
                 zorder=1,
@@ -165,12 +180,12 @@ def main():
         name = species.replace("*", "")
         if legend is True:
             handles, labels = plt.gca().get_legend_handles_labels()
-            order = [1,3,0,5,2,4]
+            order = [0,2,4,5,1,3]
             ax.legend(
                 [handles[ii] for ii in order],
                 [labels[ii] for ii in order],
-                fontsize=12,
-                loc="upper left",
+                fontsize=12 if material_labels is True else 9,
+                loc="lower right",
                 edgecolor="black",
             )
         plt.savefig(f"images/linear_relations/BEP_{label_key}/{name}.png", dpi=300)

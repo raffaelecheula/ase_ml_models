@@ -19,7 +19,7 @@ def main():
 
     # Parameters.
     reaction = "RWGS" # WGS | RWGS
-    model = "TSR+BEP" # TSR+BEP | SKLearn+SKLearn | 
+    model = "WWLGPR+WWLGPR"
 
     # Read microkinetics results.
     yaml_results = f"results_database_{reaction}.yaml"

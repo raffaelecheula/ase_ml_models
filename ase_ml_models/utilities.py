@@ -35,10 +35,10 @@ def get_connectivity_ase(
     return nlist.get_connectivity_matrix(sparse=False)
 
 # -------------------------------------------------------------------------------------
-# GET EDGES LIST
+# GET EDGES LIST THRESHOLD
 # -------------------------------------------------------------------------------------
 
-def get_edges_list(
+def get_edges_list_threshold(
     atoms: Atoms,
     indices: list = None,
     dist_ratio_thr: float = 1.25,
@@ -101,7 +101,7 @@ def get_connectivity_threshold(
 ) -> np.ndarray:
     """Get the connectivity matrix for selected atoms in an ase Atoms object."""
     if edges_list is None:
-        edges_list = get_edges_list(
+        edges_list = get_edges_list_threshold(
             atoms=atoms,
             indices=indices,
             dist_ratio_thr=dist_ratio_thr,
@@ -134,6 +134,24 @@ def get_connectivity(
     return connectivity
 
 # -------------------------------------------------------------------------------------
+# GET EDGES LIST
+# -------------------------------------------------------------------------------------
+
+def get_edges_list(
+    atoms: Atoms,
+    method: str = "threshold",
+    **kwargs,
+) -> np.ndarray:
+    """Get the connectivity matrix for an ase Atoms object."""
+    # Get the connectivity.
+    if method == "ase":
+        connectivity = get_connectivity_ase(atoms=atoms, **kwargs)
+        edges_list = get_edges_list_from_connectivity(connectivity=connectivity)
+    elif method == "threshold":
+        edges_list = get_edges_list_threshold(atoms=atoms, **kwargs)
+    return edges_list
+
+# -------------------------------------------------------------------------------------
 # ENSURE BONDING ADS SURF
 # -------------------------------------------------------------------------------------
 
@@ -162,7 +180,7 @@ def ensure_bonding_ads_surf(
     return connectivity
 
 # -------------------------------------------------------------------------------------
-# PLOT CONNECTIVITY
+# GET CONNECTIVITY FROM LIST
 # -------------------------------------------------------------------------------------
 
 def get_connectivity_from_list(

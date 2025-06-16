@@ -160,7 +160,8 @@ def main():
     plt.savefig(f"{dirname}/parity_TOF.png", dpi=300)
     
     # Uncertainty plot TSR+BEP.
-    results = {"y_err": y_err_BEP, "y_std": lstds_BEP}
+    #results = {"y_err": y_err_BEP, "y_std": lstds_BEP}
+    results = {"y_true": ltofs_DFT, "y_pred": ltofs_BEP, "y_std": lstds_BEP}
     results = calibrate_uncertainty(results=results, n_bins=6, fit_intercept=False)
     ax = uncertainty_plot(
         results=results,
@@ -171,7 +172,8 @@ def main():
     plt.savefig(f"{dirname}/uncertainty_TSR+BEP.png", dpi=300)
     
     # Uncertainty plot WWL-GPR.
-    results = {"y_err": y_err_WWL, "y_std": lstds_WWL}
+    #results = {"y_err": y_err_WWL, "y_std": lstds_WWL}
+    results = {"y_true": ltofs_DFT, "y_pred": ltofs_WWL, "y_std": lstds_BEP}
     results = calibrate_uncertainty(results=results, n_bins=6, fit_intercept=False)
     ax = uncertainty_plot(
         results=results,

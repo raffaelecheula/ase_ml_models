@@ -30,18 +30,19 @@ def main():
 
     # Cross-validation parameters.
     species_type = "adsorbates" # adsorbates | reactions
-    crossval_name = "StratifiedGroupKFold" # StratifiedKFold | StratifiedGroupKFold
+    crossval_name = "StratifiedKFold" # StratifiedKFold | StratifiedGroupKFold
     key_groups = "surface" # surface | elements
     key_stratify = "species"
-    n_splits = 6
+    n_splits = 5
     random_state = 42
     most_stable = False
-    ensemble = True
-    store_data = True
-    add_ref_atoms = True
-    exclude_add = True
+    ensemble = False
+    store_data = False
+    add_ref_atoms = False
+    exclude_add = False
+    reduce_graph = False
     # Model selection.
-    model_name = "SKLearn" # Linear | SKLearn | WWLGPR | Grakel
+    model_name = "SKLearn" # Linear | SKLearn | WWLGPR | Graph | PyG
     model_sklearn = "RandomForest" # RandomForest | XGBoost | LightGBM
     update_features = False
     model_name_ref = model_name[:]
@@ -50,12 +51,14 @@ def main():
         model_name = "TSR" if species_type == "adsorbates" else "BEP"
         model_name_ref = "TSR"
     target = "E_act" if species_type == "reactions" else "E_form"
+    drop_list = None
     model_params_dict = {
         "TSR": {"keys_TSR": ["species"] if most_stable else ["species", "site"]},
         "BEP": {"keys_BEP": ["species", "miller_index"]},
         "SKLearn": {"target": target, "model": None, "hyperparams": None},
-        "WWLGPR": {"target": target, "hyperparams": None},
-        "Grakel": {"target": target, "hyperparams": None},
+        "WWLGPR": {"target": target, "hyperparams": None, "drop_list": drop_list},
+        "Graph": {"target": target, "hyperparams": None},
+        "PyG": {"target": target},
     }
     species_ref = ["CO*", "H*", "O*"]
     fixed_TSR = {
@@ -72,6 +75,8 @@ def main():
         "BEP": "darkcyan",
         "SKLearn": "orchid",
         "WWLGPR": "crimson",
+        "Graph": "crimson",
+        "PyG": "crimson",
     }
     # Model hyperparameters.
     model_params = model_params_dict[model_name]
@@ -111,9 +116,18 @@ def main():
     elif model_name == "SKLearn":
         from ase_ml_models.sklearn import sklearn_preprocess
         sklearn_preprocess(atoms_list=atoms_list+atoms_add)
-    elif model_name == "Grakel":
-        from ase_ml_models.grakel import grakel_preprocess
-        grakel_preprocess(atoms_list=atoms_list+atoms_add)
+    elif model_name == "Graph":
+        from ase_ml_models.graph import graph_preprocess
+        graph_preprocess(atoms_list=atoms_list+atoms_add)
+    
+    if reduce_graph is True:
+        from ase_ml_models.utilities import get_reduced_graph_atoms
+        for ii, atoms in enumerate(atoms_list):
+            atoms_list[ii] = get_reduced_graph_atoms(
+                atoms=atoms,
+                method="ase",
+                bond_cutoff=3,
+            )
     
     # Print number of atoms.
     print(f"n atoms: {len(atoms_list)}")
@@ -129,35 +143,23 @@ def main():
     db_model_name = f"databases/atoms_{species_type}_{model_name}_database.db"
     db_model = connect(db_model_name, append=False) if store_data else None
     # Cross-validation.
-    if ensemble is True:
-        results = ensemble_crossvalidation(
-            atoms_list=atoms_list,
-            model_name=model_name,
-            crossval=crossval,
-            key_groups=key_groups,
-            key_stratify=key_stratify,
-            atoms_add=atoms_add,
-            exclude_add=exclude_add,
-            db_model=db_model,
-            model_params=model_params,
-        )
-    else:
-        results = crossvalidation(
-            atoms_list=atoms_list,
-            model_name=model_name,
-            crossval=crossval,
-            key_groups=key_groups,
-            key_stratify=key_stratify,
-            atoms_add=atoms_add,
-            exclude_add=exclude_add,
-            db_model=db_model,
-            model_params=model_params,
-        )
-    y_test = results["y_test"]
+    crossvalidation_fun = ensemble_crossvalidation if ensemble else crossvalidation
+    results = crossvalidation_fun(
+        atoms_list=atoms_list,
+        model_name=model_name,
+        crossval=crossval,
+        key_groups=key_groups,
+        key_stratify=key_stratify,
+        atoms_add=atoms_add,
+        exclude_add=exclude_add,
+        db_model=db_model,
+        model_params=model_params,
+    )
+    y_true = results["y_true"]
     y_pred = results["y_pred"]
     # Calculate the MAE and the RMSE.
-    mae = mean_absolute_error(y_test, y_pred)
-    rmse = mean_squared_error(y_test, y_pred, squared=False)
+    mae = mean_absolute_error(y_true, y_pred)
+    rmse = mean_squared_error(y_true, y_pred, squared=False)
     print("Average results:")
     print(f"TOT MAE:  {mae:7.3f} [eV]")
     print(f"TOT RMSE: {rmse:7.3f} [eV]")

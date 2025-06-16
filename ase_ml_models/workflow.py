@@ -4,6 +4,7 @@
 
 import numpy as np
 from ase.db.core import Database
+from sklearn.metrics import mean_absolute_error, mean_squared_error
 
 # -------------------------------------------------------------------------------------
 # TRAIN MODEL AND PREDICT
@@ -76,15 +77,30 @@ def train_model_and_predict(
         )
         results = {"y_pred": y_pred, "model": model}
     # Grakel model.
-    elif model_name == "Grakel":
-        from ase_ml_models.grakel import grakel_train, grakel_predict
+    elif model_name == "Graph":
+        from ase_ml_models.graph import graph_train, graph_predict
         # Train the Grakel model.
-        model = grakel_train(
+        model = graph_train(
             atoms_train=atoms_train,
             **model_params,
         )
         # Predict test data.
-        y_pred = grakel_predict(
+        y_pred = graph_predict(
+            atoms_test=atoms_test,
+            model=model,
+            target=model_params.get("target", "E_form"),
+        )
+        results = {"y_pred": y_pred, "model": model}
+    # Pytorch Geometric model.
+    elif model_name == "PyG":
+        from ase_ml_models.pyg import pyg_train, pyg_predict
+        # Train the Pytorch Geometric model.
+        model = pyg_train(
+            atoms_train=atoms_train,
+            **model_params,
+        )
+        # Predict test data.
+        y_pred = pyg_predict(
             atoms_test=atoms_test,
             model=model,
             target=model_params.get("target", "E_form"),
@@ -106,7 +122,8 @@ def crossvalidation(
     atoms_add: list = [],
     exclude_add: bool = True,
     db_model: Database = None,
-    print_error_thr: float = 0.5, # [eV]
+    print_mean_errors: bool = True,
+    print_error_thr: float = np.inf, # [eV]
     model_params: dict = {},
 ) -> dict:
     """Cross-validation test."""
@@ -118,7 +135,7 @@ def crossvalidation(
     atoms_add_names = [atoms.info["name"] for atoms in atoms_add]
     # Initialize cross-validation.
     indices = list(range(len(atoms_list)))
-    y_test_all = []
+    y_true_all = []
     y_pred_all = []
     indices_all = []
     for ii, (indices_train, indices_test) in enumerate(
@@ -127,7 +144,7 @@ def crossvalidation(
         # Split the data.
         atoms_train = list(np.array(atoms_list, dtype=object)[indices_train])
         atoms_test = list(np.array(atoms_list, dtype=object)[indices_test])
-        y_test = [atoms.info["E_form"] for atoms in atoms_test]
+        y_true = [atoms.info["E_form"] for atoms in atoms_test]
         # Add reference atoms to the train sets.
         atoms_train += atoms_add
         # Train the model and do predictions.
@@ -142,7 +159,7 @@ def crossvalidation(
         excluded = []
         for kk, atoms in enumerate(atoms_test):
             e_form = y_pred[kk]
-            e_form_dft = y_test[kk]
+            e_form_dft = y_true[kk]
             if atoms.info["name"] in atoms_add_names and exclude_add is True:
                 excluded.append(kk)
             if db_model is not None:
@@ -154,15 +171,32 @@ def crossvalidation(
             # Print high-error structures.
             if np.abs(e_form-e_form_dft) > print_error_thr:
                 print(f"{atoms.info['name']:70s} {e_form:+7.3f} {e_form_dft:+7.3f}")
+        # Discard excluded atoms from results.
+        y_true_ok = [yy for kk, yy in enumerate(y_true) if kk not in excluded]
+        y_pred_ok = [yy for kk, yy in enumerate(y_pred) if kk not in excluded]
+        indices_ok = [ii for kk, ii in enumerate(indices_test) if kk not in excluded]
+        # Print MAE and RMSE of the split.
+        if print_mean_errors is True:
+            mae = mean_absolute_error(y_true_ok, y_pred_ok)
+            rmse = mean_squared_error(y_true_ok, y_pred_ok, squared=False)
+            print(f"---- Split {ii+1} ----")
+            print(f"MAE:  {mae:6.4f} [eV]")
+            print(f"RMSE: {rmse:6.4f} [eV]")
         # Store the results in lists.
-        y_test_all += [yy for kk, yy in enumerate(y_test) if kk not in excluded]
-        y_pred_all += [yy for kk, yy in enumerate(y_pred) if kk not in excluded]
-        indices_all += [ii for kk, ii in enumerate(indices_test) if kk not in excluded]
+        y_true_all += y_true_ok
+        y_pred_all += y_pred_ok
+        indices_all += indices_ok
+    # Print MAE and RMSE of all the splits.
+    if print_mean_errors is True:
+        mae = mean_absolute_error(y_true_all, y_pred_all)
+        rmse = mean_squared_error(y_true_all, y_pred_all, squared=False)
+        print("----  Total  ----")
+        print(f"MAE:  {mae:6.4f} [eV]")
+        print(f"RMSE: {rmse:6.4f} [eV]")
     # Return the results.
     results = {
-        "y_test": y_test_all,
+        "y_true": y_true_all,
         "y_pred": y_pred_all,
-        "y_err": list(np.abs(np.array(y_pred_all)-np.array(y_test_all))),
         "indices": indices_all,
     }
     return results
@@ -180,7 +214,8 @@ def ensemble_crossvalidation(
     atoms_add: list = [],
     exclude_add: bool = True,
     db_model: Database = None,
-    print_error_thr: float = 0.5, # [eV]
+    print_mean_errors: bool = True,
+    print_error_thr: float = np.inf, # [eV]
     model_params: dict = {},
 ) -> dict:
     """Cross-validation test with uncertainty prediction."""
@@ -192,7 +227,7 @@ def ensemble_crossvalidation(
     atoms_add_names = [atoms.info["name"] for atoms in atoms_add]
     # Initialize cross-validation.
     indices = list(range(len(atoms_list)))
-    y_test_all = []
+    y_true_all = []
     y_pred_all = []
     y_std_all = []
     indices_all = []
@@ -203,7 +238,7 @@ def ensemble_crossvalidation(
         atoms_train = list(np.array(atoms_list, dtype=object)[indices_train])
         atoms_test = list(np.array(atoms_list, dtype=object)[indices_test])
         # Prepare results.
-        y_test = [atoms.info["E_form"] for atoms in atoms_test]
+        y_true = [atoms.info["E_form"] for atoms in atoms_test]
         y_pred_list = []
         # Split the test data.
         stratify_ii = [atoms.info[key_stratify] for atoms in atoms_train]
@@ -234,7 +269,7 @@ def ensemble_crossvalidation(
         for kk, atoms in enumerate(atoms_test):
             e_form = y_pred[kk]
             e_form_list = y_pred_array[:, kk]
-            e_form_dft = y_test[kk]
+            e_form_dft = y_true[kk]
             if atoms.info["name"] in atoms_add_names and exclude_add is True:
                 excluded.append(kk)
             if db_model is not None:
@@ -247,16 +282,34 @@ def ensemble_crossvalidation(
             # Print high-error structures.
             if np.abs(e_form-e_form_dft) > print_error_thr:
                 print(f"{atoms.info['name']:70s} {e_form:+7.3f} {e_form_dft:+7.3f}")
+        # Discard excluded atoms from results.
+        y_true_ok = [yy for kk, yy in enumerate(y_true) if kk not in excluded]
+        y_pred_ok = [yy for kk, yy in enumerate(y_pred) if kk not in excluded]
+        y_std_ok = [yy for kk, yy in enumerate(y_std) if kk not in excluded]
+        indices_ok = [ii for kk, ii in enumerate(indices_test) if kk not in excluded]
+        # Print MAE and RMSE of the split.
+        if print_mean_errors is True:
+            mae = mean_absolute_error(y_true_ok, y_pred_ok)
+            rmse = mean_squared_error(y_true_ok, y_pred_ok, squared=False)
+            print(f"---- Split {ii+1} ----")
+            print(f"MAE:  {mae:6.4f} [eV]")
+            print(f"RMSE: {rmse:6.4f} [eV]")
         # Store the results in lists.
-        y_test_all += [yy for kk, yy in enumerate(y_test) if kk not in excluded]
-        y_pred_all += [yy for kk, yy in enumerate(y_pred) if kk not in excluded]
-        y_std_all += [yy for kk, yy in enumerate(y_std) if kk not in excluded]
-        indices_all += [ii for kk, ii in enumerate(indices_test) if kk not in excluded]
+        y_true_all += y_true_ok
+        y_pred_all += y_pred_ok
+        y_std_all += y_std_ok
+        indices_all += indices_ok
+    # Print MAE and RMSE of all the splits.
+    if print_mean_errors is True:
+        mae = mean_absolute_error(y_true_all, y_pred_all)
+        rmse = mean_squared_error(y_true_all, y_pred_all, squared=False)
+        print("----  Total  ----")
+        print(f"MAE:  {mae:6.4f} [eV]")
+        print(f"RMSE: {rmse:6.4f} [eV]")
     # Return the results.
     results = {
-        "y_test": y_test_all,
+        "y_true": y_true_all,
         "y_pred": y_pred_all,
-        "y_err": list(np.abs(np.array(y_pred_all)-np.array(y_test_all))),
         "y_std": y_std_all,
         "indices": indices_all,
     }
@@ -297,7 +350,7 @@ def get_crossval(
     #    if stratified is True:
     #        crossval = StratifiedGroupKFold(**kwargs)
     #    else:
-    #        crossval = StratifiedKFold(**kwargs)
+    #        crossval = GroupKFold(**kwargs)
     #else:
     #    kwargs = {"n_splits": n_splits, "shuffle": True, "random_state": random_state}
     #    if stratified is True:
@@ -305,6 +358,22 @@ def get_crossval(
     #    else:
     #        crossval = KFold(**kwargs)
     return crossval
+
+# -------------------------------------------------------------------------------------
+# CHANGE TARGET ENERGY
+# -------------------------------------------------------------------------------------
+
+def change_target_energy(
+    y_pred: list,
+    atoms_test: list,
+    target: str = "E_form",
+):
+    """Change the target energy to formation energy."""
+    if target == "E_bind":
+        y_pred = [yy+atoms.info["E_form_gas"] for yy, atoms in zip(y_pred, atoms_test)]
+    elif target == "E_act":
+        y_pred = [yy+atoms.info["E_first"] for yy, atoms in zip(y_pred, atoms_test)]
+    return [float(yy) for yy in y_pred]
 
 # -------------------------------------------------------------------------------------
 # GET ATOMS REF
@@ -379,6 +448,16 @@ def update_ts_atoms(
             atoms.info["features_ave"][index] = atoms.info[key]
 
 # -------------------------------------------------------------------------------------
+# GET PREDICTION ERRORS
+# -------------------------------------------------------------------------------------
+
+def get_prediction_errors(
+    results: dict,
+) -> np.ndarray:
+    """Get prediction errors from the results."""
+    return np.abs(np.array(results["y_pred"])-np.array(results["y_true"]))
+
+# -------------------------------------------------------------------------------------
 # GET MEANS AND STD BINS
 # -------------------------------------------------------------------------------------
 
@@ -387,7 +466,7 @@ def get_means_and_std_bins(
     y_vect: list,
     n_bins: int = 8,
 ) -> list:
-    """Correct the uncertainty."""
+    """Get mean value and standard deviation of bins."""
     x_vect = np.array(x_vect)
     y_vect = np.array(y_vect)
     indices = np.argsort(x_vect)
@@ -407,12 +486,12 @@ def calibrate_uncertainty(
     n_bins: int = 8,
     fit_intercept: bool = False,
 ) -> dict:
-    """Correct the uncertainty."""
+    """Calibrate the uncertainty."""
     if "y_std" not in results:
         return results
     # Get bins.
     x_means, y_means, y_stds = get_means_and_std_bins(
-        x_vect=results["y_err"],
+        x_vect=get_prediction_errors(results=results),
         y_vect=results["y_std"],
         n_bins=n_bins,
     )
@@ -450,7 +529,7 @@ def parity_plot(
         fig, ax = plt.subplots(figsize=(6, 6), dpi=300)
     ax.plot(lims, lims, "k--")
     ax.errorbar(
-        x=results["y_test"],
+        x=results["y_true"],
         y=results["y_pred"],
         yerr=results["y_std"] if "y_std" in results else None,
         ms=5,
@@ -468,11 +547,10 @@ def parity_plot(
         spine.set_linewidth(1.5)
     # Calculate the MAE and the RMSE.
     if show_errors is True:
-        y_test = results["y_test"]
+        y_true = results["y_true"]
         y_pred = results["y_pred"]
-        from sklearn.metrics import mean_absolute_error, mean_squared_error
-        mae = mean_absolute_error(y_test, y_pred)
-        rmse = mean_squared_error(y_test, y_pred, squared=False)
+        mae = mean_absolute_error(y_true, y_pred)
+        rmse = mean_squared_error(y_true, y_pred, squared=False)
         ax.text(
             x=lims[0]+(lims[1]-lims[0])*0.23,
             y=lims[0]+(lims[1]-lims[0])*0.92,
@@ -517,7 +595,7 @@ def violin_plot(
         import matplotlib.pyplot as plt
         fig, ax = plt.subplots(figsize=(6, 6), dpi=300)
     violin = ax.violinplot(
-        dataset=[results["y_err"]],
+        dataset=[get_prediction_errors(results=results)],
         showmeans=False,
         showmedians=False,
         showextrema=False,
@@ -532,11 +610,10 @@ def violin_plot(
     for spine in ax.spines.values():
         spine.set_linewidth(1.5)
     if show_errors is True:
-        y_test = results["y_test"]
+        y_true = results["y_true"]
         y_pred = results["y_pred"]
-        from sklearn.metrics import mean_absolute_error, mean_squared_error
-        mae = mean_absolute_error(y_test, y_pred)
-        rmse = mean_squared_error(y_test, y_pred, squared=False)
+        mae = mean_absolute_error(y_true, y_pred)
+        rmse = mean_squared_error(y_true, y_pred, squared=False)
         ax.text(
             x=0.85,
             y=0.92*ylim[1],
@@ -571,7 +648,7 @@ def uncertainty_plot(
         fig, ax = plt.subplots(figsize=(6, 6), dpi=300)
     # Get means and std of bins.
     x_means, y_means, y_stds = get_means_and_std_bins(
-        x_vect=results["y_err"],
+        x_vect=get_prediction_errors(results=results),
         y_vect=results["y_std"],
         n_bins=n_bins,
     )
@@ -586,13 +663,6 @@ def uncertainty_plot(
         color="black",
         capsize=3,
     )
-    #points = ax.scatter(
-    #    x=results["y_err"],
-    #    y=results["y_std"],
-    #    s=15,
-    #    alpha=alpha,
-    #    color=color,
-    #)
     ax.set_xlabel("Errors [eV]", fontdict={"fontsize": 16})
     ax.set_ylabel("Uncertainty [eV]", fontdict={"fontsize": 16})
     ax.set_xlim(*lims)
@@ -624,7 +694,7 @@ def groups_errors_plot(
         from ase_ml_models.utilities import modify_name
         group_list = [modify_name(name, replace_dict) for name in group_list]
     group_dict = {}
-    for group, y_err in zip(group_list, results["y_err"]):
+    for group, y_err in zip(group_list, get_prediction_errors(results=results)):
         if group not in group_dict:
             group_dict[group] = []
         group_dict[group].append(y_err)

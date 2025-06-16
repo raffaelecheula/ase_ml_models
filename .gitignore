@@ -1,6 +1,5 @@
 # Custom
-*.db
-old/
+discarded/
 tests/
 plots/
 images*/

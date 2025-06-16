@@ -8,8 +8,10 @@ from sklearn.pipeline import make_pipeline
 from sklearn.impute import SimpleImputer, KNNImputer
 from sklearn.preprocessing import StandardScaler, RobustScaler, OneHotEncoder
 
+from ase_ml_models.workflow import change_target_energy
+
 # -------------------------------------------------------------------------------------
-# SKLEARN TRAIN
+# SKLEARN PREPROCESS
 # -------------------------------------------------------------------------------------
 
 def sklearn_preprocess(
@@ -92,11 +94,10 @@ def sklearn_predict(
     X_test = np.array([atoms.info["features_mod"] for atoms in atoms_test])
     # Predict the target values.
     y_pred = model.predict(X=X_test)
-    if target == "E_bind":
-        y_pred = [yy+atoms.info["E_form_gas"] for yy, atoms in zip(y_pred, atoms_test)]
-    elif target == "E_act":
-        y_pred = [yy+atoms.info["E_first"] for yy, atoms in zip(y_pred, atoms_test)]
-    return [float(yy) for yy in y_pred]
+    # Transform the predicted values.
+    y_pred = change_target_energy(y_pred=y_pred, atoms_test=atoms_test, target=target)
+    # Return predicted formation energies.
+    return y_pred
         
 # -------------------------------------------------------------------------------------
 # END

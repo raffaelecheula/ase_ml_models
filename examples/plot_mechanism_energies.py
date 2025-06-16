@@ -21,7 +21,7 @@ def main():
     task = "database" # database | extrapol
     models = {
         "database": "DFT+DFT",
-        "extrapol": "TSR+BEP", # TSR+BEP | SKLearn+SKLearn | WWLGPR+WWLGPR
+        "extrapol": "WWLGPR+WWLGPR",
     }
 
     # Ase database names.

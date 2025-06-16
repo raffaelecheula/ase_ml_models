@@ -58,6 +58,18 @@ def get_optimized_hyperparams(
             "verbose": -1,
         }
     
+    if model_name == "SKLearn" and model_sklearn == "GPR":
+        from sklearn.gaussian_process import GaussianProcessRegressor
+        from sklearn.gaussian_process.kernels import RBF, ConstantKernel, WhiteKernel
+        model_params["model"] = GaussianProcessRegressor()
+        model_params["hyperparams"] = {
+            "kernel": (
+                ConstantKernel(constant_value_bounds=[1e-1, 1e+1]) *
+                RBF(length_scale_bounds=[1e-2, 1e+2]) +
+                WhiteKernel(noise_level_bounds=[1e-1, 1e+1])
+            ),
+        }
+    
     if model_name == "WWLGPR" and species_type == "adsorbates":
         model_params["hyperparams"] = {
             "inner_weight": 0.64,

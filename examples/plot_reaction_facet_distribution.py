@@ -16,20 +16,6 @@ from wulffpack import SingleCrystal
 
 def main():
     
-    # From http://crystalium.materialsvirtuallab.org/ (Fe and Os not available).
-    #surface_energies_metals = {
-    #    "Rh": {(1,1,1): 1.98, (1,0,0): 2.35},
-    #    "Pd": {(1,1,1): 1.36, (1,0,0): 1.52},
-    #    "Co": {(1,1,1): 2.04, (1,0,0): 2.48},
-    #    "Ni": {(1,1,1): 1.92, (1,0,0): 2.21},
-    #    "Cu": {(1,1,1): 1.34, (1,0,0): 1.47},
-    #    "Au": {(1,1,1): 0.71, (1,0,0): 0.86},
-    #    "Pt": {(1,1,1): 1.49, (1,0,0): 1.86},
-    #    "Ru": {(1,1,1): 1.96, (1,0,0): 2.98},
-    #    "Ag": {(1,1,1): 0.76, (1,0,0): 0.82},
-    #    "Ir": {(1,1,1): 2.36, (1,0,0): 2.88},
-    #}
-    
     # From DFT calculations.
     surface_energies_metals = {
         "Rh": {(1,1,1): 0.133, (1,0,0): 0.155},

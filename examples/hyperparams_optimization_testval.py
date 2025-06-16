@@ -156,20 +156,20 @@ def main():
             print_error_thr=np.inf,
         )
         # Split the data into val and test sets.
-        indices = list(range(len(results["y_test"])))
+        indices = list(range(len(results["y_true"])))
         random.Random(random_state).shuffle(indices)
         half = len(indices) // 2
         indices_A = indices[:half]
         indices_B = indices[half:]
-        y_test_A = np.array(results["y_test"])[indices_A]
+        y_true_A = np.array(results["y_true"])[indices_A]
         y_pred_A = np.array(results["y_pred"])[indices_A]
-        y_test_B = np.array(results["y_test"])[indices_B]
+        y_true_B = np.array(results["y_true"])[indices_B]
         y_pred_B = np.array(results["y_pred"])[indices_B]
         # Calculate the MAE and the RMSE.
-        mae_A = mean_absolute_error(y_test_A, y_pred_A)
-        rmse_A = mean_squared_error(y_test_A, y_pred_A, squared=False)
-        mae_B = mean_absolute_error(y_test_B, y_pred_B)
-        rmse_B = mean_squared_error(y_test_B, y_pred_B, squared=False)
+        mae_A = mean_absolute_error(y_true_A, y_pred_A)
+        rmse_A = mean_squared_error(y_true_A, y_pred_A, squared=False)
+        mae_B = mean_absolute_error(y_true_B, y_pred_B)
+        rmse_B = mean_squared_error(y_true_B, y_pred_B, squared=False)
         print(f"Average results:")
         print(f"TOT MAE A:  {mae_A:7.4f} [eV]")
         print(f"TOT RMSE A: {rmse_A:7.4f} [eV]")

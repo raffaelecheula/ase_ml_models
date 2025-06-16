@@ -332,7 +332,6 @@ def kinetics_integration(
         results_all[models_name][surface_name] = {}
     results_all[models_name][surface_name][e_index] = {
         "TOF": float(tof_prod),
-        "conv": float(conversion_reac),
         "paths": paths_contrib,
         "coverages": coverages_yaml,
     }

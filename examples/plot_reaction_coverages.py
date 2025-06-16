@@ -22,7 +22,7 @@ def main():
     half = None # 1 | 2
     models = {
         "database": "DFT+DFT",
-        "extrapol": "TSR+BEP", # TSR+BEP | SKLearn+SKLearn | WWLGPR+WWLGPR
+        "extrapol": "WWLGPR+WWLGPR",
     }
 
     # Read microkinetics results.

@@ -30,7 +30,7 @@ def main():
     # Ase database.
     db_ase_name = "databases/atoms_adsorbates_DFT_database.db"
     most_stable = True
-    material_labels = True
+    material_labels = False
     time_lim = 1
     get_heatmap = False
     legend = False
@@ -39,13 +39,6 @@ def main():
     db_ase = connect(db_ase_name)
     kwargs = {"most_stable": True} if most_stable is True else {}
     atoms_list = get_atoms_list_from_db(db_ase=db_ase, **kwargs)
-    
-    ## Get the most stable structures.
-    #keys_most_stable = ["species", "surface", "site"]
-    #atoms_list = get_atoms_most_stable(
-    #    atoms_list=atoms_list,
-    #    keys_most_stable=keys_most_stable,
-    #)
     
     # Colors for the different classes.
     colors_dict = {

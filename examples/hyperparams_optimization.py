@@ -152,11 +152,11 @@ def main():
             model_params=model_params,
             print_error_thr=np.inf,
         )
-        y_test = results["y_test"]
+        y_true = results["y_true"]
         y_pred = results["y_pred"]
         # Calculate the MAE and the RMSE.
-        mae = mean_absolute_error(y_test, y_pred)
-        rmse = mean_squared_error(y_test, y_pred, squared=False)
+        mae = mean_absolute_error(y_true, y_pred)
+        rmse = mean_squared_error(y_true, y_pred, squared=False)
         print("Average results:")
         print(f"TOT MAE:   {mae:7.4f} [eV]")
         print(f"TOT RMSE:  {rmse:7.4f} [eV]")
