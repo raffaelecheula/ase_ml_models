@@ -83,7 +83,6 @@ def get_optimized_hyperparams(
     
     if model_name == "WWLGPR" and species_type == "reactions":
         model_params["hyperparams"] = {
-        
             "inner_weight": 0.60,
             "outer_weight": 0.02,
             "gpr_reg": 0.0300,

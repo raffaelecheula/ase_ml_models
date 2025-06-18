@@ -90,6 +90,7 @@ def get_tsr_models_dict(
 def tsr_train(
     atoms_train: list,
     keys_TSR: list = ["species"],
+    **kwargs: dict,
 ):
     """Get the data and train the Linear Scaling Relation models."""
     tsr_data_dict = get_tsr_data_dict(atoms_train=atoms_train, keys_TSR=keys_TSR)
@@ -104,6 +105,7 @@ def tsr_predict(
     atoms_test: list,
     models_dict: dict,
     keys_TSR: list = ["species"],
+    **kwargs: dict,
 ):
     """Predict energies from Linear Scaling Relation models."""
     y_pred = []
@@ -202,6 +204,7 @@ def get_bep_models_dict(
 def bep_train(
     atoms_train: list,
     keys_BEP: list = ["species"],
+    **kwargs: dict,
 ):
     """Get the data and train the Brønsted-Evans-Polanyi models."""
     bep_data_dict = get_bep_data_dict(atoms_train=atoms_train, keys_BEP=keys_BEP)
@@ -216,6 +219,7 @@ def bep_predict(
     atoms_test: list,
     models_dict: dict,
     keys_BEP: list = ["species"],
+    **kwargs: dict,
 ):
     """Predict energies from Brønsted-Evans-Polanyi models."""
     y_pred = []

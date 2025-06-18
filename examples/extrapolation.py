@@ -35,31 +35,24 @@ def main():
     model_name = "WWLGPR" # Linear | SKLearn | WWLGPR
     model_sklearn = "LightGBM" # RandomForest | XGBoost | LightGBM
     update_features = True
-    model_name_ref = model_name[:]
+    model_name_ref = model_name[:] if model_name != "BEP" else "TSR"
+    
     # Model parameters.
-    if model_name == "Linear":
-        model_name = "TSR" if species_type == "adsorbates" else "BEP"
-        model_name_ref = "TSR"
     target = "E_act" if species_type == "reactions" else "E_form"
+    species_ref = ["CO*", "H*", "O*"]
+    fixed_TSR = {spec: ["CO*"] for spec in ["CO2*", "COH*", "cCOOH*", "H2O*", "HCO*"]}
+    fixed_TSR.update({spec: ["O*"] for spec in ["HCOO*", "OH*"]})
+    # Model hyperparameters.
     model_params_dict = {
         "TSR": {"keys_TSR": ["species"] if most_stable else ["species", "site"]},
         "BEP": {"keys_BEP": ["species", "miller_index"]},
-        "SKLearn": {"target": target, "model": None, "hyperparams": None},
-        "WWLGPR": {"target": target, "hyperparams": None},
+        "SKLearn": {"target": target},
+        "WWLGPR": {"target": target},
+        "Graph": {"target": target},
+        "PyG": {"target": target},
     }
-    species_ref = ["CO*", "H*", "O*"]
-    fixed_TSR = {
-        "CO2*": ["CO*"],
-        "COH*": ["CO*"],
-        "cCOOH*": ["CO*"],
-        "H2O*": ["CO*"],
-        "HCO*": ["CO*"],
-        "HCOO*": ["O*"],
-        "OH*": ["O*"],
-    }
-    # Model hyperparameters.
     model_params = model_params_dict[model_name]
-    # Get optimized hyperparameters.
+    # Model hyperparameters.
     from optimized_hyperparams import get_optimized_hyperparams
     model_params = get_optimized_hyperparams(
         model_params=model_params,
@@ -92,16 +85,13 @@ def main():
         db_ads = connect(db_ads_name)
         update_ts_atoms(atoms_list=atoms_extra, db_ads=db_ads)
     # Preprocess the data.
+    atoms_all = atoms_list + atoms_add + atoms_extra
     if model_name == "TSR":
         from ase_ml_models.linear import tsr_prepare
-        tsr_prepare(
-            atoms_list=atoms_list+atoms_add+atoms_extra,
-            species_TSR=species_ref,
-            fixed_TSR=fixed_TSR,
-        )
+        tsr_prepare(atoms_all, species_TSR=species_ref, fixed_TSR=fixed_TSR)
     elif model_name == "SKLearn":
         from ase_ml_models.sklearn import sklearn_preprocess
-        sklearn_preprocess(atoms_list=atoms_list+atoms_add+atoms_extra)
+        sklearn_preprocess(atoms_list=atoms_all)
 
     # Print number of atoms.
     print(f"n train: {len(atoms_list)}")

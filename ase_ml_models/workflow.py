@@ -320,7 +320,9 @@ def ensemble_crossvalidation(
 # -------------------------------------------------------------------------------------
 
 def get_crossval(
-    crossval_name: str,
+    crossval_name: str = None,
+    stratified: bool = None,
+    group: bool = None,
     n_splits: int = 5,
     random_state: int = 42,
 ) -> object:
@@ -331,32 +333,20 @@ def get_crossval(
         GroupKFold,
         StratifiedGroupKFold,
     )
-    crossval_dict = {
-        "KFold": KFold,
-        "StratifiedKFold": StratifiedKFold,
-        "GroupKFold": GroupKFold,
-        "StratifiedGroupKFold": StratifiedGroupKFold,
-    }
-    if crossval_name == "GroupKFold":
-        crossval = crossval_dict[crossval_name](n_splits=n_splits)
+    # Prepare the cross-validation parameters.
+    kwargs = {"shuffle": True, "random_state": random_state}
+    # Check the cross-validation type and create the object.
+    if crossval_name == "KFold" or [group, stratified] == [False]*2:
+        crossval = KFold(n_splits=n_splits, **kwargs)
+    elif crossval_name == "StratifiedKFold" or [group, stratified] == [False, True]:
+        crossval = StratifiedKFold(n_splits=n_splits, **kwargs)
+    elif crossval_name == "GroupKFold" or [group, stratified] == [True, False]:
+        crossval = GroupKFold(n_splits=n_splits)
+    elif crossval_name == "StratifiedGroupKFold" or [group, stratified] == [True]*2:
+        crossval = StratifiedGroupKFold(n_splits=n_splits, **kwargs)
     else:
-        crossval = crossval_dict[crossval_name](
-            n_splits=n_splits,
-            shuffle=True,
-            random_state=random_state,
-        )
-    #if group is True:
-    #    kwargs = {"n_splits": n_splits}
-    #    if stratified is True:
-    #        crossval = StratifiedGroupKFold(**kwargs)
-    #    else:
-    #        crossval = GroupKFold(**kwargs)
-    #else:
-    #    kwargs = {"n_splits": n_splits, "shuffle": True, "random_state": random_state}
-    #    if stratified is True:
-    #        crossval = StratifiedKFold(**kwargs)
-    #    else:
-    #        crossval = KFold(**kwargs)
+        raise ValueError("Wrong cross-validation parameters.")
+    # Return the cross-validation object.
     return crossval
 
 # -------------------------------------------------------------------------------------

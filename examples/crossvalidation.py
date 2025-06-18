@@ -30,55 +30,38 @@ def main():
 
     # Cross-validation parameters.
     species_type = "adsorbates" # adsorbates | reactions
-    crossval_name = "StratifiedKFold" # StratifiedKFold | StratifiedGroupKFold
+    stratified = True
+    group = True
     key_groups = "surface" # surface | elements
     key_stratify = "species"
     n_splits = 5
     random_state = 42
     most_stable = False
-    ensemble = False
+    ensemble = True
     store_data = False
-    add_ref_atoms = False
-    exclude_add = False
-    reduce_graph = False
+    add_ref_atoms = True
+    exclude_add = True
     # Model selection.
-    model_name = "SKLearn" # Linear | SKLearn | WWLGPR | Graph | PyG
-    model_sklearn = "RandomForest" # RandomForest | XGBoost | LightGBM
+    model_name = "Graph" # TSR | BEP | SKLearn | WWLGPR | Graph | PyG
+    model_sklearn = "LightGBM" # RandomForest | XGBoost | LightGBM
     update_features = False
-    model_name_ref = model_name[:]
+    model_name_ref = model_name[:] if model_name != "BEP" else "TSR"
+    
     # Model parameters.
-    if model_name == "Linear":
-        model_name = "TSR" if species_type == "adsorbates" else "BEP"
-        model_name_ref = "TSR"
+    species_ref = ["CO*", "H*", "O*"]
     target = "E_act" if species_type == "reactions" else "E_form"
-    drop_list = None
+    fixed_TSR = {spec: ["CO*"] for spec in ["CO2*", "COH*", "cCOOH*", "HCO*"]}
+    fixed_TSR.update({spec: ["O*"] for spec in ["HCOO*", "OH*", "H2O*"]})
+    fixed_TSR.update({spec: ["H*"] for spec in ["H2*"]})
+    # Model hyperparameters.
     model_params_dict = {
         "TSR": {"keys_TSR": ["species"] if most_stable else ["species", "site"]},
         "BEP": {"keys_BEP": ["species", "miller_index"]},
-        "SKLearn": {"target": target, "model": None, "hyperparams": None},
-        "WWLGPR": {"target": target, "hyperparams": None, "drop_list": drop_list},
-        "Graph": {"target": target, "hyperparams": None},
+        "SKLearn": {"target": target},
+        "WWLGPR": {"target": target},
+        "Graph": {"target": target},
         "PyG": {"target": target},
     }
-    species_ref = ["CO*", "H*", "O*"]
-    fixed_TSR = {
-        "CO2*": ["CO*"],
-        "COH*": ["CO*"],
-        "cCOOH*": ["CO*"],
-        "H2O*": ["CO*"],
-        "HCO*": ["CO*"],
-        "HCOO*": ["O*"],
-        "OH*": ["O*"],
-    }
-    color_dict = {
-        "TSR": "darkcyan",
-        "BEP": "darkcyan",
-        "SKLearn": "orchid",
-        "WWLGPR": "crimson",
-        "Graph": "crimson",
-        "PyG": "crimson",
-    }
-    # Model hyperparameters.
     model_params = model_params_dict[model_name]
     # Get optimized hyperparameters.
     from optimized_hyperparams import get_optimized_hyperparams
@@ -108,26 +91,15 @@ def main():
     # Preprocess the data.
     if model_name == "TSR":
         from ase_ml_models.linear import tsr_prepare
-        tsr_prepare(
-            atoms_list=atoms_list+atoms_add,
-            species_TSR=species_ref,
-            fixed_TSR=fixed_TSR,
-        )
+        tsr_prepare(atoms_list, species_TSR=species_ref, fixed_TSR=fixed_TSR)
     elif model_name == "SKLearn":
         from ase_ml_models.sklearn import sklearn_preprocess
-        sklearn_preprocess(atoms_list=atoms_list+atoms_add)
+        sklearn_preprocess(atoms_list=atoms_list)
     elif model_name == "Graph":
-        from ase_ml_models.graph import graph_preprocess
-        graph_preprocess(atoms_list=atoms_list+atoms_add)
-    
-    if reduce_graph is True:
-        from ase_ml_models.utilities import get_reduced_graph_atoms
-        for ii, atoms in enumerate(atoms_list):
-            atoms_list[ii] = get_reduced_graph_atoms(
-                atoms=atoms,
-                method="ase",
-                bond_cutoff=3,
-            )
+        from ase_ml_models.graph import graph_preprocess, precompute_distances
+        graph_preprocess(atoms_list=atoms_list)
+        distances = precompute_distances(atoms_list=atoms_list)
+        model_params.update({"distances": distances})
     
     # Print number of atoms.
     print(f"n atoms: {len(atoms_list)}")
@@ -135,7 +107,8 @@ def main():
     
     # Initialize cross-validation.
     crossval = get_crossval(
-        crossval_name=crossval_name,
+        stratified=stratified,
+        group=group,
         n_splits=n_splits,
         random_state=random_state,
     )
@@ -163,9 +136,23 @@ def main():
     print("Average results:")
     print(f"TOT MAE:  {mae:7.3f} [eV]")
     print(f"TOT RMSE: {rmse:7.3f} [eV]")
-    # Color and names of output directory and files.
+    
+    # Plots parameters.
+    plot_parity = True
+    plot_species = False
+    plot_materials = False
+    plot_uncertainty = False
+    # Colors and names for plots.
+    color_dict = {
+        "TSR": "darkcyan",
+        "BEP": "darkcyan",
+        "SKLearn": "orchid",
+        "WWLGPR": "crimson",
+        "Graph": "crimson",
+        "PyG": "crimson",
+    }
     color = color_dict[model_name]
-    task = f"groupval_{key_groups}" if "Group" in crossval_name else "crossval"
+    task = f"groupval_{key_groups}" if group is True else "crossval"
     task += "_stable" if most_stable is True else "_all"
     dirname = f"images/crossvalidation/{task}"
     os.makedirs(dirname, exist_ok=True)
@@ -174,19 +161,22 @@ def main():
     if species_type == "reactions" and update_features is True:
         model = f"{model}_from_{model_ref}"
     # Parity plot.
-    lims = [-2.2, +2.8] if species_type == "adsorbates" else [-1.4, +5.2]
-    ax = parity_plot(results=results, lims=lims, color=color)
-    plt.savefig(f"{dirname}/parity_{species_type}_{model}.png")
+    if plot_parity is True:
+        lims = [-2.2, +2.8] if species_type == "adsorbates" else [-1.4, +5.2]
+        ax = parity_plot(results=results, lims=lims, color=color)
+        plt.savefig(f"{dirname}/parity_{species_type}_{model}.png")
     # Species error plot.
-    ax = groups_errors_plot(results, atoms_list, key="species", color=color)
-    plt.subplots_adjust(left=0.15, right=0.95, top=0.95, bottom=0.35)
-    plt.savefig(f"{dirname}/species_{species_type}_{model}.png")
+    if plot_species is True:
+        ax = groups_errors_plot(results, atoms_list, key="species", color=color)
+        plt.subplots_adjust(left=0.15, right=0.95, top=0.95, bottom=0.35)
+        plt.savefig(f"{dirname}/species_{species_type}_{model}.png")
     # Material error plot.
-    ax = groups_errors_plot(results, atoms_list, key="material", color=color)
-    plt.subplots_adjust(left=0.15, right=0.95, top=0.95, bottom=0.35)
-    plt.savefig(f"{dirname}/material_{species_type}_{model}.png")
+    if plot_materials is True:
+        ax = groups_errors_plot(results, atoms_list, key="material", color=color)
+        plt.subplots_adjust(left=0.15, right=0.95, top=0.95, bottom=0.35)
+        plt.savefig(f"{dirname}/material_{species_type}_{model}.png")
     # Uncertainty quantification.
-    if ensemble is True:
+    if plot_uncertainty is True and ensemble is True:
         results = calibrate_uncertainty(results=results, fit_intercept=False)
         ax = uncertainty_plot(results=results, color=color)
         plt.savefig(f"{dirname}/uncertainty_{species_type}_{model}.png")

@@ -30,7 +30,8 @@ def main():
 
     # Cross-validation parameters.
     species_type = "adsorbates" # adsorbates | reactions
-    crossval_name = "StratifiedGroupKFold" # StratifiedKFold | StratifiedGroupKFold
+    stratified = True
+    group = True
     key_groups = "surface" # surface | elements
     key_stratify = "species"
     n_splits = 3
@@ -44,19 +45,14 @@ def main():
     model_sklearn = "LightGBM" # RandomForest | XGBoost | LightGBM
     update_features = False
     model_name_ref = model_name[:]
+    
     # Model parameters.
-    target = "E_act" if species_type == "reactions" else "E_form"
-    if model_name == "Linear":
-        model_name = "TSR" if species_type == "adsorbates" else "BEP"
-    if model_name_ref == "Linear":
-        model_name_ref = "TSR" if species_type == "adsorbates" else "BEP"
-    model_params_dict = {
-        "TSR": {"keys_TSR": ["species"] if most_stable else ["species", "site"]},
-        "BEP": {"keys_BEP": ["species", "miller_index"]},
-        "SKLearn": {"target": target, "model": None, "hyperparams": None},
-        "WWLGPR": {"target": target, "hyperparams": None},
-    }
     species_ref = ["CO*", "H*", "O*"]
+    target = "E_act" if species_type == "reactions" else "E_form"
+    model_params_dict = {
+        "SKLearn": {"target": target},
+        "WWLGPR": {"target": target},
+    }
     
     # Read Ase database.
     db_ase_name = f"databases/atoms_{species_type}_DFT_database.db"
@@ -73,7 +69,8 @@ def main():
         update_ts_atoms(atoms_list=atoms_list, db_ads=db_ads)
     # Initialize cross-validation.
     crossval = get_crossval(
-        crossval_name=crossval_name,
+        stratified=stratified,
+        group=group,
         n_splits=n_splits,
         random_state=random_state,
     )
@@ -126,7 +123,7 @@ def main():
     
     # Yaml file.
     os.makedirs("hyperparams", exist_ok=True)
-    task = f"groupval_{key_groups}" if "Group" in crossval_name else "crossval"
+    task = f"groupval_{key_groups}" if group is True else "crossval"
     model = model_name if model_name != "SKLearn" else model_sklearn
     yaml_results = f"hyperparams/hyperparams_{task}.yaml"
     # Customize YAML writer.

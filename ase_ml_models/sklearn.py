@@ -64,6 +64,7 @@ def sklearn_train(
     model: object = None,
     hyperparams: dict = None,
     target: str = "E_form",
+    **kwargs: dict,
 ):
     """Train a scikit-learn model."""
     # Default model.
@@ -89,6 +90,7 @@ def sklearn_predict(
     atoms_test: list,
     model: object,
     target: str = "E_form",
+    **kwargs: dict,
 ):
     # Get the features of the test set.
     X_test = np.array([atoms.info["features_mod"] for atoms in atoms_test])

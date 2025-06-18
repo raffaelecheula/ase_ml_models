@@ -5,8 +5,6 @@
 import numpy as np
 import networkx as nx
 from ase import Atoms
-from sklearn.kernel_ridge import KernelRidge
-from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import Kernel, Hyperparameter
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
@@ -21,6 +19,7 @@ def compute_kernel(
     length_scale: float = 1.0,
     kernel_type: str = "exponential",
     alpha: float = 1.0,
+    **kwargs: dict,
 ) -> float:
     """
     Compute kernel from distances values.
@@ -56,22 +55,29 @@ def compute_distance(
     method: str = "ot-emd2",
     reg: float = 0.1,
     c_unmatched: float = 1.0,
+    **kwargs: dict,
 ) -> float:
     """
     Compute a single distance.
     """
     if method == "ot-emd2":
-        # Exact Earth Mover's Distance, solved via linear programming.
+        # Earth Mover's Distance, solved with Python Optimal Transport (POT).
         import ot
         dist_matrix = ot.dist(x1=features_a, x2=features_b, metric="euclidean")
         dist = ot.emd2(a=weights_a, b=weights_b, M=dist_matrix)
+    elif method == "ot-emd2-numpy":
+        # Earth Mover's Distance (faster but compatible only with numpy arrays).
+        from ot.utils import euclidean_distances
+        from ot.lp import emd_c
+        dist_matrix = euclidean_distances(X=features_a, Y=features_b, squared=False)
+        dist = emd_c(weights_a, weights_b, dist_matrix, 100000, 1)[1]
     elif method == "ot-sinkhorn2":
         # Entropy-regularized optimal transport.
         import ot
         dist_matrix = ot.dist(x1=features_a, x2=features_b, metric="euclidean")
         dist = ot.sinkhorn2(a=weights_a, b=weights_b, M=dist_matrix, reg=reg)
     elif method == "scipy-wasserstein":
-        # Multivariate Wasserstein distance using SciPy (for 1D/low-d histograms).
+        # SciPy multivariate Wasserstein distance.
         from scipy.stats import wasserstein_distance_nd
         dist = wasserstein_distance_nd(
             u_values=features_a,
@@ -106,10 +112,13 @@ class GraphKernel(Kernel):
     """
     Graph kernel.
     """
-    def __init__(self, length_scale=1.0, kwargs_dist={}, kwargs_kernel={}):
+    def __init__(
+        self,
+        length_scale: float = 10.0,
+        **kwargs: dict,
+    ):
         self.length_scale = length_scale
-        self.kwargs_dist = kwargs_dist
-        self.kwargs_kernel = kwargs_kernel
+        self.kwargs = kwargs
     
     def __call__(self, X, Y=None, eval_gradient=False):
         if Y is None:
@@ -135,13 +144,13 @@ class GraphKernel(Kernel):
                     features_b=features_b,
                     weights_a=weights_a,
                     weights_b=weights_b,
-                    **self.kwargs_dist,
+                    **self.kwargs,
                 )
         # Calculate kernel.
         kernel = compute_kernel(
             distances=distances,
             length_scale=self.length_scale,
-            **self.kwargs_kernel,
+            **self.kwargs,
         )
         if eval_gradient:
             return kernel, np.zeros((kernel.shape[0], kernel.shape[1], 1))
@@ -167,14 +176,14 @@ def compute_distance_task(
     """
     Compute a single distance (task for parallel runs).
     """
-    ii, jj, features_a, features_b, weights_a, weights_b, kwargs_dist = args
+    ii, jj, features_a, features_b, weights_a, weights_b, kwargs = args
     # Calculate Wasserstein distance.
     dist = compute_distance(
         features_a=features_a,
         features_b=features_b,
         weights_a=weights_a,
         weights_b=weights_b,
-        **kwargs_dist,
+        **kwargs,
     )
     return ii, jj, dist
 
@@ -187,7 +196,7 @@ def precompute_distances(
     store_ids: bool = True,
     method: str = None,
     n_jobs: int = 8,
-    kwargs_dist: dict = {},
+    **kwargs: dict,
 ) -> np.ndarray:
     """
     Precompute distances with serial or parallel jobs.
@@ -203,7 +212,7 @@ def precompute_distances(
     # Prepare a list of args.
     nn = len(atoms_list)
     args_list = [
-        (ii, jj, features[ii], features[jj], weights[ii], weights[jj], kwargs_dist)
+        (ii, jj, features[ii], features[jj], weights[ii], weights[jj], kwargs)
         for ii, jj in [(ii, jj) for ii in range(nn) for jj in range(ii+1, nn)]
     ]
     # Calculate distances with different parallelization methods.
@@ -251,14 +260,14 @@ class PrecomputedDistancesGraphKernel(Kernel):
     def __init__(
         self,
         distances: np.ndarray,
-        length_scale: float = 1.0,
-        length_scale_bounds: tuple = (1e-5, 1e5),
-        kwargs_kernel: dict = {},
+        length_scale: float = 10.0,
+        length_scale_bounds: tuple = "fixed",
+        **kwargs: dict,
     ):
         self.length_scale = length_scale
         self.length_scale_bounds = length_scale_bounds
         self.distances = distances
-        self.kwargs_kernel = kwargs_kernel
+        self.kwargs = kwargs
     
     def __call__(self, X, Y=None, eval_gradient=False):
         if Y is None:
@@ -273,7 +282,7 @@ class PrecomputedDistancesGraphKernel(Kernel):
         kernel = compute_kernel(
             distances=distances,
             length_scale=self.length_scale,
-            **self.kwargs_kernel,
+            **self.kwargs,
         )
         if eval_gradient:
             if self.hyperparameter_length_scale.fixed:
@@ -322,30 +331,32 @@ def atoms_to_nx_graph(
 def get_node_weights(
     graph: nx.Graph,
     indices: list = None,
-    node_weight_dict: dict = {0: 1.00, 1: 1.00, 2: 0.10},
+    node_weight_dict: dict = {"A0": 1.00, "S1": 0.80, "S2": 0.20},
 ) -> np.ndarray:
     """
     Calculate node weights, according to `node_weight_dict`. For adsorbates, the
     `indices` are the indices of the adsorbate atoms in the Atoms object. The
     `node_weight_dict` is a dictionary that maps the weight type to the
-    corresponding weight value, where `0` corresponds to adsorbate atoms, `1` to 
-    atoms in the first shell, and `2` to atoms in the second shell.
+    corresponding weight value, where `A0` corresponds to adsorbate atoms, `S1` to 
+    atoms in the first shell, and `S2` to atoms in the second shell.
     """
     if indices is None:
         weights = np.ones(len(graph.nodes()))
     else:
+        weight_keys = sorted(node_weight_dict.keys(), key=lambda x: int(x[1:]))
+        node_weight_list = [node_weight_dict[ii] for ii in weight_keys]
         indices_assigned = []
         weights = np.zeros(len(graph.nodes()))
         indices_ii = [int(ii) for ii in indices]
-        ii_max = max(node_weight_dict.keys())
-        for ii in range(ii_max+1):
-            weights[indices_ii] = node_weight_dict[ii]
+        ii_max = len(node_weight_list)-1
+        for ii in range(ii_max):
+            weights[indices_ii] = node_weight_list[ii]
             indices_assigned += indices_ii
-            if ii < ii_max:
-                indices_ii = [
-                    jj for kk in indices_ii for jj in graph.neighbors(kk)
-                    if jj not in indices_assigned
-                ]
+            indices_ii = [
+                jj for kk in indices_ii for jj in graph.neighbors(kk)
+                if jj not in indices_assigned
+            ]
+        weights[indices_ii] = node_weight_list[ii_max]
     return weights
 
 # -------------------------------------------------------------------------------------
@@ -355,22 +366,23 @@ def get_node_weights(
 def get_edge_weights(
     graph: nx.Graph,
     indices: list = None,
-    edge_weight_dict: dict = {0: 0.50, 1: 1.00, 2: 0.50},
+    edge_weight_dict: dict = {"AA": 0.50, "AS": 1.00, "SS": 0.50},
 ) -> dict:
     """
     Get edges weights, according to `edge_weight_dict`. For adsorbates, the 
     `indices` are the indices of the adsorbate atoms in the Atoms object. The 
     `edge_weight_dict` is a dictionary that maps the weight type and the
-    corresponding edge weight value, where `0` corresponds to edges between surface
-    atoms, `1` to edges between adsorbate and surface, and `2` to edges between 
-    adsorbate atoms.
+    corresponding edge weight value, where `AA` corresponds to edges between adsorbate
+    atoms, `AS` to edges between adsorbate and surface, and `SS` to edges between 
+    surface atoms.
     """
     edges = list(graph.edges())
     if indices is None:
         edge_weights = {tuple(sorted(ee)): 1.0 for ee in graph.edges()}
     else:
+        edge_weight_list = [edge_weight_dict[ii] for ii in ["SS", "AS", "AA"]]
         edge_weights = {
-            tuple(sorted(ee)): edge_weight_dict[len(set(ee) & set(indices))]
+            tuple(sorted(ee)): edge_weight_list[len(set(ee) & set(indices))]
             for ee in edges
         }
     return edge_weights
@@ -382,12 +394,12 @@ def get_edge_weights(
 def propagate_features(
     graph: nx.Graph,
     features: np.ndarray,
-    use_edge_weights: bool = False,
+    use_edge_weights: bool = True,
     stack_features: bool = True,
     weight_neigh: float = 0.1,
     edge_weights: dict = None,
     indices: list = None,
-    edge_weight_dict: dict = {0: 0.50, 1: 1.00, 2: 0.50},
+    edge_weight_dict: dict = {"AA": 0.50, "AS": 1.00, "SS": 0.50},
     n_iter: int = 1,
     nan: float = 0.0,
 ) -> np.ndarray:
@@ -424,6 +436,9 @@ def propagate_features(
                     weights=weights,
                     axis=0,
                 )
+            else:
+                # If no neighbors, keep the original feature.
+                features_neighbors[ii] = features[ii].copy()
         # Combine original and neighbor features.
         if stack_features:
             # Concatenate propagated features to the original feature set.
@@ -439,7 +454,7 @@ def propagate_features(
 
 def graph_preprocess(
     atoms_list: list,
-    node_weight_dict: dict = {0: 1.00, 1: 0.80, 2: 0.20},
+    node_weight_dict: dict = {"A0": 1.00, "S1": 0.80, "S2": 0.20},
     preproc: object = MinMaxScaler(feature_range=(-1, +1)),
     use_edge_weights: bool = True,
     stack_features: bool = True,
@@ -461,6 +476,7 @@ def graph_preprocess(
             graph=graph,
             features=atoms.info["features"],
             use_edge_weights=use_edge_weights,
+            indices=atoms.info["indices_ads"],
             stack_features=stack_features,
             weight_neigh=weight_neigh,
             n_iter=n_iter,
@@ -479,22 +495,57 @@ def graph_preprocess(
 def graph_train(
     atoms_train: list,
     target: str = "E_form",
-    kwargs_model: dict = {"alpha": 0.01},
-    kwargs_kernel: dict = {"length_scale": 5.},
-    **kwargs,
+    kwargs_model: dict = {},
+    kwargs_kernel: dict = {},
+    model_name: str = "GPR",
+    distances: np.ndarray = None,
+    **kwargs: dict,
 ):
     """Train the Graph model."""
+    # Prepare the data.
     X_train = np.array([atoms for atoms in atoms_train], dtype=object)
     y_train = np.array([atoms.info[target] for atoms in atoms_train])
     # Graph kernel.
-    kernel = GraphKernel(
-        **(kwargs_kernel if kwargs_kernel else {}),
-    )
-    # Gaussian process regression model.
-    model = GaussianProcessRegressor(
-        kernel=kernel,
-        **(kwargs_model if kwargs_model else {}),
-    )
+    if distances is not None:
+        kernel = PrecomputedDistancesGraphKernel(distances=distances, **kwargs_kernel)
+    else:
+        kernel = GraphKernel(**kwargs_kernel)
+    # Kernel-based models.
+    if model_name == "GPR":
+        from sklearn.gaussian_process import GaussianProcessRegressor
+        # Gaussian Process Regression model.
+        model = GaussianProcessRegressor(
+            kernel=kernel,
+            alpha=kwargs_model.pop("alpha", 0.001),
+            copy_X_train=kwargs_model.pop("copy_X_train", False),
+            normalize_y=kwargs_model.pop("normalize_y", True),
+            **kwargs_model,
+        )
+    elif model_name == "KRR":
+        from sklearn.kernel_ridge import KernelRidge
+        # Kernel Ridge Regression model.
+        model = KernelRidge(
+            kernel="precomputed",
+            alpha=kwargs_model.pop("alpha", 0.001),
+            **kwargs_model,
+        )
+        # Store kernel and training data in the model.
+        model.info = {"kernel": kernel, "X_train": X_train}
+        # Precompute the kernel.
+        X_train = kernel(X=X_train)
+    elif model_name == "SVR":
+        from sklearn.svm import SVR
+        # Support Vector Regression model.
+        model = SVR(
+            kernel="precomputed",
+            **kwargs_model,
+        )
+        # Store kernel and training data in the model.
+        model.info = {"kernel": kernel, "X_train": X_train}
+        # Precompute the kernel.
+        X_train = kernel(X=X_train)
+    else:
+        raise ValueError(f"Unknown model name: {model_name}.")
     # Fit the model.
     model.fit(X=X_train, y=y_train)
     # Return the model.
@@ -508,10 +559,13 @@ def graph_predict(
     atoms_test: list,
     model: object,
     target: str = "E_form",
+    **kwargs: dict,
 ):
     """Predict the energies using the Graph model."""
     X_test = np.array([atoms for atoms in atoms_test], dtype=object)
-    y_pred, sigma = model.predict(X=X_test, return_std=True)
+    if model.kernel == "precomputed":
+        X_test = model.info["kernel"](X=X_test, Y=model.info["X_train"])
+    y_pred = model.predict(X=X_test)
     # Transform the predicted values.
     y_pred = change_target_energy(y_pred=y_pred, atoms_test=atoms_test, target=target)
     # Return predicted formation energies.

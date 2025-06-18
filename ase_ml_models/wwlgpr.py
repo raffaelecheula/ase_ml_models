@@ -108,6 +108,7 @@ def wwlgpr_train(
     hyperparams: dict = None,
     optimize_hyperpars: bool = False,
     n_calls: int = 100,
+    **kwargs: dict,
 ):
     """Train the WWL-GPR model."""
     from igraph import Graph
@@ -144,6 +145,7 @@ def wwlgpr_predict(
     model: object,
     opt_hypers: dict = {},
     target: str = "E_form",
+    **kwargs: dict,
 ):
     """Predict the energies using the WWL-GPR model."""
     from igraph import Graph
