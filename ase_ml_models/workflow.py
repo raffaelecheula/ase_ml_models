@@ -73,7 +73,7 @@ def train_model_and_predict(
         y_pred = wwlgpr_predict(
             atoms_test=atoms_test,
             model=model,
-            target=model_params.get("target", "E_form"),
+            **model_params,
         )
         results = {"y_pred": y_pred, "model": model}
     # Grakel model.
@@ -103,223 +103,17 @@ def train_model_and_predict(
         y_pred = pyg_predict(
             atoms_test=atoms_test,
             model=model,
-            target=model_params.get("target", "E_form"),
+            **model_params,
         )
         results = {"y_pred": y_pred, "model": model}
     # Return the results.
     return results
 
 # -------------------------------------------------------------------------------------
-# CROSSVALIDATION
+# GET CROSSVALIDATOR
 # -------------------------------------------------------------------------------------
 
-def crossvalidation(
-    atoms_list: list,
-    model_name: str,
-    crossval: object,
-    key_groups: str = "material",
-    key_stratify: str = "species",
-    atoms_add: list = [],
-    exclude_add: bool = True,
-    db_model: Database = None,
-    print_mean_errors: bool = True,
-    print_error_thr: float = np.inf, # [eV]
-    model_params: dict = {},
-) -> dict:
-    """Cross-validation test."""
-    from ase_ml_models.databases import write_atoms_to_db
-    # Get groups and stratify for splits.
-    groups = [str(atoms.info[key_groups]) for atoms in atoms_list]
-    stratify = [str(atoms.info[key_stratify]) for atoms in atoms_list]
-    # Names of atoms added.
-    atoms_add_names = [atoms.info["name"] for atoms in atoms_add]
-    # Initialize cross-validation.
-    indices = list(range(len(atoms_list)))
-    y_true_all = []
-    y_pred_all = []
-    indices_all = []
-    for ii, (indices_train, indices_test) in enumerate(
-        crossval.split(X=indices, y=stratify, groups=groups)
-    ):
-        # Split the data.
-        atoms_train = list(np.array(atoms_list, dtype=object)[indices_train])
-        atoms_test = list(np.array(atoms_list, dtype=object)[indices_test])
-        y_true = [atoms.info["E_form"] for atoms in atoms_test]
-        # Add reference atoms to the train sets.
-        atoms_train += atoms_add
-        # Train the model and do predictions.
-        results = train_model_and_predict(
-            model_name=model_name,
-            atoms_train=atoms_train,
-            atoms_test=atoms_test,
-            model_params=model_params,
-        )
-        y_pred = results["y_pred"]
-        # Store the results in the ase database.
-        excluded = []
-        for kk, atoms in enumerate(atoms_test):
-            e_form = y_pred[kk]
-            e_form_dft = y_true[kk]
-            if atoms.info["name"] in atoms_add_names and exclude_add is True:
-                excluded.append(kk)
-            if db_model is not None:
-                atoms_copy = atoms.copy()
-                atoms_copy.info = atoms.info.copy()
-                atoms_copy.info["E_form"] = float(e_form)
-                atoms_copy.info["E_form_dft"] = float(e_form_dft)
-                write_atoms_to_db(atoms=atoms_copy, db_ase=db_model)
-            # Print high-error structures.
-            if np.abs(e_form-e_form_dft) > print_error_thr:
-                print(f"{atoms.info['name']:70s} {e_form:+7.3f} {e_form_dft:+7.3f}")
-        # Discard excluded atoms from results.
-        y_true_ok = [yy for kk, yy in enumerate(y_true) if kk not in excluded]
-        y_pred_ok = [yy for kk, yy in enumerate(y_pred) if kk not in excluded]
-        indices_ok = [ii for kk, ii in enumerate(indices_test) if kk not in excluded]
-        # Print MAE and RMSE of the split.
-        if print_mean_errors is True:
-            mae = mean_absolute_error(y_true_ok, y_pred_ok)
-            rmse = mean_squared_error(y_true_ok, y_pred_ok, squared=False)
-            print(f"---- Split {ii+1} ----")
-            print(f"MAE:  {mae:6.4f} [eV]")
-            print(f"RMSE: {rmse:6.4f} [eV]")
-        # Store the results in lists.
-        y_true_all += y_true_ok
-        y_pred_all += y_pred_ok
-        indices_all += indices_ok
-    # Print MAE and RMSE of all the splits.
-    if print_mean_errors is True:
-        mae = mean_absolute_error(y_true_all, y_pred_all)
-        rmse = mean_squared_error(y_true_all, y_pred_all, squared=False)
-        print("----  Total  ----")
-        print(f"MAE:  {mae:6.4f} [eV]")
-        print(f"RMSE: {rmse:6.4f} [eV]")
-    # Return the results.
-    results = {
-        "y_true": y_true_all,
-        "y_pred": y_pred_all,
-        "indices": indices_all,
-    }
-    return results
-
-# -------------------------------------------------------------------------------------
-# ENSEMBLE CROSSVALIDATION
-# -------------------------------------------------------------------------------------
-
-def ensemble_crossvalidation(
-    atoms_list: list,
-    model_name: str,
-    crossval: object,
-    key_groups: str = "material",
-    key_stratify: str = "species",
-    atoms_add: list = [],
-    exclude_add: bool = True,
-    db_model: Database = None,
-    print_mean_errors: bool = True,
-    print_error_thr: float = np.inf, # [eV]
-    model_params: dict = {},
-) -> dict:
-    """Cross-validation test with uncertainty prediction."""
-    from ase_ml_models.databases import write_atoms_to_db
-    # Get groups and stratify for splits.
-    groups = [str(atoms.info[key_groups]) for atoms in atoms_list]
-    stratify = [str(atoms.info[key_stratify]) for atoms in atoms_list]
-    # Names of atoms added.
-    atoms_add_names = [atoms.info["name"] for atoms in atoms_add]
-    # Initialize cross-validation.
-    indices = list(range(len(atoms_list)))
-    y_true_all = []
-    y_pred_all = []
-    y_std_all = []
-    indices_all = []
-    for ii, (indices_train, indices_test) in enumerate(
-        crossval.split(X=indices, y=stratify, groups=groups)
-    ):
-        # Split the data.
-        atoms_train = list(np.array(atoms_list, dtype=object)[indices_train])
-        atoms_test = list(np.array(atoms_list, dtype=object)[indices_test])
-        # Prepare results.
-        y_true = [atoms.info["E_form"] for atoms in atoms_test]
-        y_pred_list = []
-        # Split the test data.
-        stratify_ii = [str(atoms.info[key_stratify]) for atoms in atoms_train]
-        groups_ii = [str(atoms.info[key_groups]) for atoms in atoms_train]
-        if ii == 0:
-            crossval.n_splits -= 1
-        for jj, (indices_train_jj, indices_test_jj) in enumerate(
-            crossval.split(X=indices_train, y=stratify_ii, groups=groups_ii)
-        ):
-            atoms_train_jj = list(
-                np.array(atoms_train, dtype=object)[indices_train_jj]
-            )
-            # Add reference atoms to the train sets.
-            atoms_train += atoms_add
-            # Train the model and do predictions.
-            results = train_model_and_predict(
-                model_name=model_name,
-                atoms_train=atoms_train_jj,
-                atoms_test=atoms_test,
-                model_params=model_params,
-            )
-            y_pred_list.append(results["y_pred"])
-        y_pred = list(np.mean(y_pred_list, axis=0))
-        y_std = list(np.std(y_pred_list, axis=0))
-        # Store the results in the ase database.
-        y_pred_array = np.array(y_pred_list)
-        excluded = []
-        for kk, atoms in enumerate(atoms_test):
-            e_form = y_pred[kk]
-            e_form_list = y_pred_array[:, kk]
-            e_form_dft = y_true[kk]
-            if atoms.info["name"] in atoms_add_names and exclude_add is True:
-                excluded.append(kk)
-            if db_model is not None:
-                atoms_copy = atoms.copy()
-                atoms_copy.info = atoms.info.copy()
-                atoms_copy.info["E_form"] = e_form
-                atoms_copy.info["E_form_list"] = e_form_list
-                atoms_copy.info["E_form_dft"] = e_form_dft
-                write_atoms_to_db(atoms=atoms_copy, db_ase=db_model)
-            # Print high-error structures.
-            if np.abs(e_form-e_form_dft) > print_error_thr:
-                print(f"{atoms.info['name']:70s} {e_form:+7.3f} {e_form_dft:+7.3f}")
-        # Discard excluded atoms from results.
-        y_true_ok = [yy for kk, yy in enumerate(y_true) if kk not in excluded]
-        y_pred_ok = [yy for kk, yy in enumerate(y_pred) if kk not in excluded]
-        y_std_ok = [yy for kk, yy in enumerate(y_std) if kk not in excluded]
-        indices_ok = [ii for kk, ii in enumerate(indices_test) if kk not in excluded]
-        # Print MAE and RMSE of the split.
-        if print_mean_errors is True:
-            mae = mean_absolute_error(y_true_ok, y_pred_ok)
-            rmse = mean_squared_error(y_true_ok, y_pred_ok, squared=False)
-            print(f"---- Split {ii+1} ----")
-            print(f"MAE:  {mae:6.4f} [eV]")
-            print(f"RMSE: {rmse:6.4f} [eV]")
-        # Store the results in lists.
-        y_true_all += y_true_ok
-        y_pred_all += y_pred_ok
-        y_std_all += y_std_ok
-        indices_all += indices_ok
-    # Print MAE and RMSE of all the splits.
-    if print_mean_errors is True:
-        mae = mean_absolute_error(y_true_all, y_pred_all)
-        rmse = mean_squared_error(y_true_all, y_pred_all, squared=False)
-        print("----  Total  ----")
-        print(f"MAE:  {mae:6.4f} [eV]")
-        print(f"RMSE: {rmse:6.4f} [eV]")
-    # Return the results.
-    results = {
-        "y_true": y_true_all,
-        "y_pred": y_pred_all,
-        "y_std": y_std_all,
-        "indices": indices_all,
-    }
-    return results
-
-# -------------------------------------------------------------------------------------
-# GET CROSSVAL
-# -------------------------------------------------------------------------------------
-
-def get_crossval(
+def get_crossvalidator(
     crossval_name: str = None,
     stratified: bool = None,
     group: bool = None,
@@ -348,6 +142,148 @@ def get_crossval(
         raise ValueError("Wrong cross-validation parameters.")
     # Return the cross-validation object.
     return crossval
+
+# -------------------------------------------------------------------------------------
+# CROSSVALIDATION
+# -------------------------------------------------------------------------------------
+
+def crossvalidation(
+    atoms_list: list,
+    model_name: str,
+    crossval: object,
+    key_groups: str = "material",
+    key_stratify: str = "species",
+    key_name: str = "name",
+    atoms_add: list = [],
+    exclude_add: bool = True,
+    db_model: Database = None,
+    print_mean_errors: bool = True,
+    print_error_thr: float = np.inf, # [eV]
+    model_params: dict = {},
+    ensemble: bool = False,
+    resampling: bool = False,
+    n_splits_ensemble: int = None,
+    n_resamples: int = 100,
+) -> dict:
+    """Cross-validation test with uncertainty prediction."""
+    from ase_ml_models.databases import write_atoms_to_db
+    from sklearn.utils import resample
+    # Get groups and stratify for splits.
+    groups = [str(atoms.info[key_groups]) for atoms in atoms_list]
+    stratify = [str(atoms.info[key_stratify]) for atoms in atoms_list]
+    # Names of atoms added.
+    atoms_add_names = [atoms.info[key_name] for atoms in atoms_add]
+    # Initialize cross-validation.
+    y_true_all = []
+    y_pred_all = []
+    y_std_all = []
+    indices_all = []
+    indices_list = list(range(len(atoms_list)))
+    for ii, (indices_train, indices_test) in enumerate(
+        crossval.split(X=indices_list, y=stratify, groups=groups)
+    ):
+        # Split the data into train and test lists of atoms objects.
+        atoms_train = list(np.array(atoms_list, dtype=object)[indices_train])
+        atoms_test = list(np.array(atoms_list, dtype=object)[indices_test])
+        # Prepare a list of indices to produce the train sets.
+        indices_ii = list(range(len(atoms_train)))
+        # Prepare data for training an ensemble of models.
+        if ensemble is True:
+            # Set the number of splits.
+            if ii == 0:
+                if n_splits_ensemble is None:
+                    n_splits_ensemble = crossval.n_splits - 1
+                crossval.n_splits = n_splits_ensemble
+            # Get a list of indices that are subgroups of indices_ii, obtained
+            # with the same cross-validator used to split train and test data.
+            stratify_ii = [str(atoms.info[key_stratify]) for atoms in atoms_train]
+            groups_ii = [str(atoms.info[key_groups]) for atoms in atoms_train]
+            indices_jj_list = [indices for indices, _ in (
+                crossval.split(X=indices_ii, y=stratify_ii, groups=groups_ii)
+            )]
+        else:
+            # For standard cross-validation (no ensemble of models), use the
+            # whole train set.
+            indices_jj_list = [indices_ii]
+        # Apply resampling to the list of indices_jj, to train an ensemble of
+        # models via bootstrapping (random resampling with replacement).
+        if resampling is True:
+            indices_jj_list_copy = indices_jj_list.copy()
+            indices_jj_list = []
+            for indices in indices_jj_list_copy:
+                for jj in range(n_resamples):
+                    indices_jj_list.append(resample(indices, random_state=jj))
+        # Prepare the results.
+        y_true = [atoms.info["E_form"] for atoms in atoms_test]
+        y_pred_list = []
+        # Loop over the list of indices.
+        for indices_jj in indices_jj_list:
+            # Get the atoms for the current train set.
+            atoms_train_jj = list(np.array(atoms_train, dtype=object)[indices_jj])
+            # Add reference atoms to the train sets.
+            atoms_train_jj += atoms_add
+            # Train the model and do predictions.
+            results = train_model_and_predict(
+                model_name=model_name,
+                atoms_train=atoms_train_jj,
+                atoms_test=atoms_test,
+                model_params=model_params,
+            )
+            y_pred_list.append(results["y_pred"])
+        y_pred = list(np.mean(y_pred_list, axis=0))
+        y_std = list(np.std(y_pred_list, axis=0))
+        # Store the results in the ase database.
+        y_pred_array = np.array(y_pred_list)
+        excluded = []
+        for kk, atoms in enumerate(atoms_test):
+            e_form = y_pred[kk]
+            e_form_list = y_pred_array[:, kk]
+            e_form_dft = y_true[kk]
+            if atoms.info[key_name] in atoms_add_names and exclude_add is True:
+                excluded.append(kk)
+            if db_model is not None:
+                atoms_copy = atoms.copy()
+                atoms_copy.info = atoms.info.copy()
+                atoms_copy.info["E_form"] = e_form
+                atoms_copy.info["E_form_list"] = e_form_list
+                atoms_copy.info["E_form_dft"] = e_form_dft
+                write_atoms_to_db(atoms=atoms_copy, db_ase=db_model)
+            # Print high-error structures.
+            if np.abs(e_form-e_form_dft) > print_error_thr:
+                print(f"{atoms.info[key_name]:70s} {e_form:+7.3f} {e_form_dft:+7.3f}")
+        # Discard excluded atoms from results.
+        y_true_ok = [yy for kk, yy in enumerate(y_true) if kk not in excluded]
+        y_pred_ok = [yy for kk, yy in enumerate(y_pred) if kk not in excluded]
+        y_std_ok = [yy for kk, yy in enumerate(y_std) if kk not in excluded]
+        indices_ok = [ii for kk, ii in enumerate(indices_test) if kk not in excluded]
+        # Print MAE and RMSE of the split.
+        if print_mean_errors is True:
+            mae = mean_absolute_error(y_true_ok, y_pred_ok)
+            rmse = mean_squared_error(y_true_ok, y_pred_ok, squared=False)
+            print(f"---- Split {ii+1} ----")
+            print(f"MAE:  {mae:6.4f} [eV]")
+            print(f"RMSE: {rmse:6.4f} [eV]")
+        # Store the results in lists.
+        y_true_all += y_true_ok
+        y_pred_all += y_pred_ok
+        y_std_all += y_std_ok
+        indices_all += indices_ok
+    # Print MAE and RMSE of all the splits.
+    if print_mean_errors is True:
+        mae = mean_absolute_error(y_true_all, y_pred_all)
+        rmse = mean_squared_error(y_true_all, y_pred_all, squared=False)
+        print("----  Total  ----")
+        print(f"MAE:  {mae:6.4f} [eV]")
+        print(f"RMSE: {rmse:6.4f} [eV]")
+    # Return the results.
+    results = {
+        "y_true": y_true_all,
+        "y_pred": y_pred_all,
+        "indices": indices_all,
+    }
+    if ensemble is True or resampling is True:
+        results["y_std"] = y_std_all
+    return results
 
 # -------------------------------------------------------------------------------------
 # CHANGE TARGET ENERGY

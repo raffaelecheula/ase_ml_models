@@ -15,9 +15,8 @@ from ase_ml_models.yaml import customize_yaml, convert_numpy_to_python
 from ase_ml_models.workflow import (
     update_ts_atoms,
     get_atoms_ref,
-    get_crossval,
+    get_crossvalidator,
     crossvalidation,
-    ensemble_crossvalidation,
     parity_plot,
     violin_plot,
 )
@@ -29,30 +28,28 @@ from ase_ml_models.workflow import (
 def main():
 
     # Cross-validation parameters.
-    species_type = "adsorbates" # adsorbates | reactions
-    stratified = True
-    group = True
-    key_groups = "surface" # surface | elements
-    key_stratify = "species"
-    n_splits = 3
-    random_state = 42
-    most_stable = False
-    add_ref_atoms = True
-    exclude_add = True
-    fraction_data = 0.15
+    species_type = "adsorbates" # adsorbates | reactions # Type of species.
+    stratified = True # Stratified cross-validation.
+    group = False # Group cross-validation.
+    key_groups = "surface" # surface | elements # Key for grouping the data.
+    key_stratify = "species" # Key for stratification.
+    n_splits = 3 # Number of splits for cross-validation.
+    random_state = 42 # Random state for reproducibility.
+    most_stable = False # Use only the most stable structures.
+    add_ref_atoms = False # Add reference atoms to the training set.
+    exclude_add = True # Exclude the reference atoms in the errors evaluation.
+    fraction_data = 0.15 # Fraction of the data to use for training and testing.
+    
     # Model selection.
-    model_name = "WWLGPR" # Linear | SKLearn | WWLGPR
+    model_name = "WWLGPR" # TSR | BEP | SKLearn | WWLGPR | Graph | PyG
     model_sklearn = "LightGBM" # RandomForest | XGBoost | LightGBM
-    update_features = False
+    update_features = False # Update features of TS atoms from an Ase database.
     model_name_ref = model_name[:]
     
     # Model parameters.
     species_ref = ["CO*", "H*", "O*"]
     target = "E_act" if species_type == "reactions" else "E_form"
-    model_params_dict = {
-        "SKLearn": {"target": target},
-        "WWLGPR": {"target": target},
-    }
+    model_params = {"target": target}
     
     # Read Ase database.
     db_ase_name = f"databases/atoms_{species_type}_DFT_database.db"
@@ -62,13 +59,15 @@ def main():
     # Fraction of the data.
     random.Random(random_state).shuffle(atoms_list)
     atoms_list = atoms_list[:int(fraction_data*len(atoms_list))]
-    # Update features from an Ase database.
+    
+    # Update TS features from an Ase database.
     if update_features is True and species_type == "reactions":
         db_ads_name = f"databases/atoms_adsorbates_{model_name_ref}_database.db"
         db_ads = connect(db_ads_name)
         update_ts_atoms(atoms_list=atoms_list, db_ads=db_ads)
+    
     # Initialize cross-validation.
-    crossval = get_crossval(
+    crossval = get_crossvalidator(
         stratified=stratified,
         group=group,
         n_splits=n_splits,
@@ -79,18 +78,31 @@ def main():
         atoms_add = get_atoms_ref(atoms_list=atoms_list, species_ref=species_ref)
     else:
         atoms_add = []
+    
     # Preprocess the data.
     if model_name == "SKLearn":
         from ase_ml_models.sklearn import sklearn_preprocess
         sklearn_preprocess(atoms_list=atoms_list+atoms_add)
-    
+    elif model_name == "Graph":
+        from ase_ml_models.graph import graph_preprocess, precompute_distances
+        node_weight_dict = {"A0": 1.00, "S1": 0.80, "S2": 0.20}
+        edge_weight_dict = {"AA": 0.50, "AS": 1.00, "SS": 0.50}
+        graph_preprocess(
+            atoms_list=atoms_list,
+            node_weight_dict=node_weight_dict,
+            edge_weight_dict=edge_weight_dict,
+        )
+        filename = "distances.npy"
+        distances = precompute_distances(atoms_X=atoms_list, filename=filename)
+        model_params.update({"distances": distances})
+
     # Hyperparameters optimization.
     num_samples = 100
     #np.random.seed(random_state)
     
     if model_name == "SKLearn" and model_sklearn == "LightGBM":
         from lightgbm import LGBMRegressor
-        model_params_dict["SKLearn"]["model"] = LGBMRegressor()
+        model_params["model"] = LGBMRegressor()
         hyperparams_fixed = {
             "max_bin": int(np.exp(10)),
             "verbose": -1,
@@ -130,7 +142,6 @@ def main():
     customize_yaml(float_format="{:10.5E}")
     
     # Model hyperparameters.
-    model_params = model_params_dict[model_name]
     hyperparams_dict = {}
     for ii in range(num_samples):
         hyperparams = {key: hyperparams_scan[key][ii] for key in hyperparams_scan}

@@ -70,9 +70,7 @@ def sklearn_train(
     # Default model.
     if model is None:
         from sklearn.ensemble import RandomForestRegressor
-        model = RandomForestRegressor()
-        if hyperparams is None:
-            hyperparams = {"n_estimators": 100, "max_depth": 10}
+        model = RandomForestRegressor(n_estimators=100, max_depth=10)
     # Get the features and target values of the train set.
     X_train = np.array([atoms.info["features_mod"] for atoms in atoms_train])
     y_train = np.array([atoms.info[target] for atoms in atoms_train])
