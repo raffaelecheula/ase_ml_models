@@ -22,6 +22,10 @@ from ase_ml_models.workflow import (
     uncertainty_plot,
 )
 
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
+
 # -------------------------------------------------------------------------------------
 # MAIN
 # -------------------------------------------------------------------------------------
@@ -97,8 +101,15 @@ def main():
         sklearn_preprocess(atoms_list=atoms_list)
     elif model_name == "Graph":
         from ase_ml_models.graph import graph_preprocess, precompute_distances
-        graph_preprocess(atoms_list=atoms_list)
-        distances = precompute_distances(atoms_list=atoms_list)
+        node_weight_dict = {"A0": 1.00, "S1": 0.80, "S2": 0.20}
+        edge_weight_dict = {"AA": 0.50, "AS": 1.00, "SS": 0.50}
+        graph_preprocess(
+            atoms_list=atoms_list,
+            node_weight_dict=node_weight_dict,
+            edge_weight_dict=edge_weight_dict,
+        )
+        filename = "distances.npy"
+        distances = precompute_distances(atoms_X=atoms_list, filename=filename)
         model_params.update({"distances": distances})
     
     # Print number of atoms.
@@ -133,9 +144,9 @@ def main():
     # Calculate the MAE and the RMSE.
     mae = mean_absolute_error(y_true, y_pred)
     rmse = mean_squared_error(y_true, y_pred, squared=False)
-    print("Average results:")
-    print(f"TOT MAE:  {mae:7.3f} [eV]")
-    print(f"TOT RMSE: {rmse:7.3f} [eV]")
+    print("\nAverage results:")
+    print(f"TOT MAE:  {mae:7.4f} [eV]")
+    print(f"TOT RMSE: {rmse:7.4f} [eV]")
     
     # Plots parameters.
     plot_parity = True

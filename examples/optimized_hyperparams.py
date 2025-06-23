@@ -91,6 +91,14 @@ def get_optimized_hyperparams(
             "edge_s_a": 1.00,
             "edge_a_a": 0.70,
         }
+    
+    if model_name == "Graph":
+        model_params.update({
+            "model_name": "KRR",
+            "kwargs_kernel": {"length_scale": 30},
+            "kwargs_model": {"alpha": 1e-4},
+        })
+    
     return model_params
     
 # -------------------------------------------------------------------------------------

@@ -88,7 +88,7 @@ def train_model_and_predict(
         y_pred = graph_predict(
             atoms_test=atoms_test,
             model=model,
-            target=model_params.get("target", "E_form"),
+            **model_params,
         )
         results = {"y_pred": y_pred, "model": model}
     # Pytorch Geometric model.
@@ -129,8 +129,8 @@ def crossvalidation(
     """Cross-validation test."""
     from ase_ml_models.databases import write_atoms_to_db
     # Get groups and stratify for splits.
-    groups = [atoms.info[key_groups] for atoms in atoms_list]
-    stratify = [atoms.info[key_stratify] for atoms in atoms_list]
+    groups = [str(atoms.info[key_groups]) for atoms in atoms_list]
+    stratify = [str(atoms.info[key_stratify]) for atoms in atoms_list]
     # Names of atoms added.
     atoms_add_names = [atoms.info["name"] for atoms in atoms_add]
     # Initialize cross-validation.
@@ -221,8 +221,8 @@ def ensemble_crossvalidation(
     """Cross-validation test with uncertainty prediction."""
     from ase_ml_models.databases import write_atoms_to_db
     # Get groups and stratify for splits.
-    groups = [atoms.info[key_groups] for atoms in atoms_list]
-    stratify = [atoms.info[key_stratify] for atoms in atoms_list]
+    groups = [str(atoms.info[key_groups]) for atoms in atoms_list]
+    stratify = [str(atoms.info[key_stratify]) for atoms in atoms_list]
     # Names of atoms added.
     atoms_add_names = [atoms.info["name"] for atoms in atoms_add]
     # Initialize cross-validation.
@@ -241,8 +241,8 @@ def ensemble_crossvalidation(
         y_true = [atoms.info["E_form"] for atoms in atoms_test]
         y_pred_list = []
         # Split the test data.
-        stratify_ii = [atoms.info[key_stratify] for atoms in atoms_train]
-        groups_ii = [atoms.info[key_groups] for atoms in atoms_train]
+        stratify_ii = [str(atoms.info[key_stratify]) for atoms in atoms_train]
+        groups_ii = [str(atoms.info[key_groups]) for atoms in atoms_train]
         if ii == 0:
             crossval.n_splits -= 1
         for jj, (indices_train_jj, indices_test_jj) in enumerate(

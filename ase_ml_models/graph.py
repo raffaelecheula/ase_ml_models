@@ -2,6 +2,7 @@
 # IMPORTS
 # -------------------------------------------------------------------------------------
 
+import os
 import numpy as np
 import networkx as nx
 from ase import Atoms
@@ -52,7 +53,7 @@ def compute_distance(
     features_b: np.ndarray,
     weights_a: np.ndarray,
     weights_b: np.ndarray,
-    method: str = "ot-emd2",
+    method: str = "ot-emd2-numpy",
     reg: float = 0.1,
     c_unmatched: float = 1.0,
     **kwargs: dict,
@@ -61,23 +62,23 @@ def compute_distance(
     Compute a single distance.
     """
     if method == "ot-emd2":
-        # Earth Mover's Distance, solved with Python Optimal Transport (POT).
+        # Wasserstein (earth mover's) distance, from Python Optimal Transport (POT).
         import ot
         dist_matrix = ot.dist(x1=features_a, x2=features_b, metric="euclidean")
         dist = ot.emd2(a=weights_a, b=weights_b, M=dist_matrix)
     elif method == "ot-emd2-numpy":
-        # Earth Mover's Distance (faster but compatible only with numpy arrays).
+        # Wasserstein distance from POT (faster but compatible only with numpy arrays).
         from ot.utils import euclidean_distances
         from ot.lp import emd_c
         dist_matrix = euclidean_distances(X=features_a, Y=features_b, squared=False)
         dist = emd_c(weights_a, weights_b, dist_matrix, 100000, 1)[1]
     elif method == "ot-sinkhorn2":
-        # Entropy-regularized optimal transport.
+        # Sinkhorn distance (entropy-regularized optimal transport), from POT.
         import ot
         dist_matrix = ot.dist(x1=features_a, x2=features_b, metric="euclidean")
         dist = ot.sinkhorn2(a=weights_a, b=weights_b, M=dist_matrix, reg=reg)
     elif method == "scipy-wasserstein":
-        # SciPy multivariate Wasserstein distance.
+        # Wasserstein distance, from Scipy (slower, especially for long arrays).
         from scipy.stats import wasserstein_distance_nd
         dist = wasserstein_distance_nd(
             u_values=features_a,
@@ -105,68 +106,6 @@ def compute_distance(
     return dist
 
 # -------------------------------------------------------------------------------------
-# GRAPH KERNEL
-# -------------------------------------------------------------------------------------
-
-class GraphKernel(Kernel):
-    """
-    Graph kernel.
-    """
-    def __init__(
-        self,
-        length_scale: float = 10.0,
-        **kwargs: dict,
-    ):
-        self.length_scale = length_scale
-        self.kwargs = kwargs
-    
-    def __call__(self, X, Y=None, eval_gradient=False):
-        if Y is None:
-            Y = X
-        # Get features and weights from Atoms objects.
-        features_X = [np.array(atoms.info["features"]) for atoms in X]
-        features_Y = [np.array(atoms.info["features"]) for atoms in Y]
-        weights_X = [
-            np.array(atoms.info["weights"]) / np.sum(atoms.info["weights"])
-            for atoms in X
-        ]
-        weights_Y = [
-            np.array(atoms.info["weights"]) / np.sum(atoms.info["weights"])
-            for atoms in Y
-        ]
-        # Calculate distances matrix.
-        distances = np.zeros((len(X), len(Y)))
-        for ii, (features_a, weights_a) in enumerate(zip(features_X, weights_X)):
-            for jj, (features_b, weights_b) in enumerate(zip(features_Y, weights_Y)):
-                # Calculate graph distance.
-                distances[ii, jj] = compute_distance(
-                    features_a=features_a,
-                    features_b=features_b,
-                    weights_a=weights_a,
-                    weights_b=weights_b,
-                    **self.kwargs,
-                )
-        # Calculate kernel.
-        kernel = compute_kernel(
-            distances=distances,
-            length_scale=self.length_scale,
-            **self.kwargs,
-        )
-        if eval_gradient:
-            return kernel, np.zeros((kernel.shape[0], kernel.shape[1], 1))
-        return kernel
-    
-    def diag(self, X):
-        return np.ones(X.shape[0])
-    
-    def is_stationary(self):
-        return True
-
-    @property
-    def requires_vector_input(self):
-        return False
-
-# -------------------------------------------------------------------------------------
 # COMPUTED DISTANCES TASK
 # -------------------------------------------------------------------------------------
 
@@ -188,41 +127,103 @@ def compute_distance_task(
     return ii, jj, dist
 
 # -------------------------------------------------------------------------------------
-# PRECOMPUTED DISTANCES
+# GET FEATURES AND WEIGHTS
 # -------------------------------------------------------------------------------------
 
-def precompute_distances(
+def get_features_and_weights(
     atoms_list: list,
-    store_ids: bool = True,
-    method: str = None,
-    n_jobs: int = 8,
-    **kwargs: dict,
-) -> np.ndarray:
+) -> tuple:
     """
-    Precompute distances with serial or parallel jobs.
+    Get features and weights from Atoms objects.
     """
-    if method is None:
-        method = "multiprocessing" if len(atoms_list) > 300 else "serial"
-    # Get features and weights from Atoms objects.
     features = [np.array(atoms.info["features"]) for atoms in atoms_list]
     weights = [
         np.array(atoms.info["weights"]) / np.sum(atoms.info["weights"])
         for atoms in atoms_list
     ]
+    return features, weights
+
+# -------------------------------------------------------------------------------------
+# CALCULATE DISTANCES MATRIX
+# -------------------------------------------------------------------------------------
+
+def calculate_distances_matrix(
+    atoms_X: list,
+    atoms_Y: list = None,
+    method: str = None,
+    n_jobs: int = 4,
+    with_tqdm: bool = True,
+    symmetric: bool = True,
+    compute_X: bool = False,
+    **kwargs: dict,
+) -> np.ndarray:
+    """
+    Calculate distances matrix with serial or parallel jobs.
+    """
+    # Get features and weights from Atoms objects.
+    features_X, weights_X = get_features_and_weights(atoms_list=atoms_X)
+    n_X = len(atoms_X)
+    n_tot = n_X
+    if atoms_Y is not None:
+        features_Y, weights_Y = get_features_and_weights(atoms_list=atoms_Y)
+        n_Y = len(atoms_Y)
+        n_tot = n_X + n_Y
     # Prepare a list of args.
-    nn = len(atoms_list)
-    args_list = [
-        (ii, jj, features[ii], features[jj], weights[ii], weights[jj], kwargs)
-        for ii, jj in [(ii, jj) for ii in range(nn) for jj in range(ii+1, nn)]
-    ]
+    args_list = []
+    if atoms_Y is not None:
+        # Index pairs for distances between atoms_X and atoms_Y.
+        # The distance matrix has dimension (n_X, n_Y) if symmetric is False,
+        # and (n_X+n_Y, n_X+n_Y) if symmetric is True (when precomputing the
+        # distances matrix including atoms_X and atoms_Y).
+        args_list += [
+            (
+                ii,
+                jj + (n_X if symmetric is True else 0),
+                features_X[ii],
+                features_Y[jj],
+                weights_X[ii],
+                weights_Y[jj],
+                kwargs,
+            )
+            for ii, jj in [(ii, jj) for ii in range(n_X) for jj in range(n_Y)]
+        ]
+    if atoms_Y is None or compute_X is True:
+        # Index pairs for distances within atoms_X.
+        # The distance matrix has dimension (n_X, n_X) if atoms_Y is None 
+        # (calculation of distances only within atoms_X). If atoms_Y is not None,
+        # the distances within atoms_X can be calculated as well, resulting in a
+        # symmetric matrix of dimension (n_X+n_Y, n_X+n_Y).
+        args_list += [
+            (
+                ii,
+                jj,
+                features_X[ii],
+                features_X[jj],
+                weights_X[ii],
+                weights_X[jj],
+                kwargs,
+            )
+            for ii, jj in [(ii, jj) for ii in range(n_X) for jj in range(ii+1, n_X)]
+        ]
+    # Default method for parallelization.
+    if method is None:
+        method = "multiprocessing" if len(args_list) > 50000 else "serial"
+    # Set number of jobs for parallelization.
+    if n_jobs < 0:
+        n_jobs = os.cpu_count()
+    # Prepare tqdm progress bar if needed.
+    if with_tqdm is True:
+        from tqdm import tqdm
+        print(f"Calculating {len(args_list)} distances.")
+        args_list = tqdm(args_list, desc="Distances calculation", ncols=100)
     # Calculate distances with different parallelization methods.
     if method == "serial":
         # Compute distances without parallelization.
         results = [compute_distance_task(args) for args in args_list]
     if method == "multiprocessing":
         # Compute distances with multiprocessing.
-        import multiprocessing as mp
-        with mp.get_context("spawn").Pool(n_jobs) as pool:
+        from multiprocessing import Pool
+        with Pool(n_jobs) as pool:
             results = pool.map(compute_distance_task, args_list)
     elif method == "joblib":
         # Compute distances with joblib.
@@ -239,13 +240,101 @@ def precompute_distances(
         futures = [compute_distance_ray.remote(args) for args in args_list]
         results = ray.get(futures)
     # Calculate the distances matrix (symmetric, with zeros on the diagonal).
-    distances = np.zeros((nn, nn))
-    for ii, jj, dist in results:
-        distances[ii, jj] = distances[jj, ii] = dist
-    # Store IDs.
-    if store_ids is True:
-        for ii, atoms in enumerate(atoms_list):
-            atoms.info["graph-ID"] = ii
+    if symmetric is True:
+        distances = np.zeros((n_tot, n_tot))
+        for ii, jj, dist in results:
+            distances[ii, jj] = distances[jj, ii] = dist
+    else:
+        # Distances between atoms_X and atoms_Y.
+        distances = np.zeros((n_X, n_Y))
+        for ii, jj, dist in results:
+            distances[ii, jj] = dist
+    # Return the distances matrix.
+    return distances
+
+# -------------------------------------------------------------------------------------
+# GRAPH KERNEL
+# -------------------------------------------------------------------------------------
+
+class GraphKernel(Kernel):
+    """
+    Graph kernel.
+    """
+    def __init__(
+        self,
+        length_scale: float = 10.0,
+        kwargs_kernel: dict = {},
+        **kwargs: dict,
+    ):
+        self.length_scale = length_scale
+        self.kwargs_kernel = kwargs_kernel
+        self.kwargs_kernel.update(kwargs)
+    
+    def __call__(self, X, Y=None, eval_gradient=False):
+        # Calculate distances matrix.
+        distances = calculate_distances_matrix(
+            atoms_X=X,
+            atoms_Y=Y,
+            with_tqdm=False,
+            symmetric=True if Y is None else False,
+            **self.kwargs_kernel,
+        )
+        # Calculate kernel matrix.
+        kernel = compute_kernel(
+            distances=distances,
+            length_scale=self.length_scale,
+            **self.kwargs_kernel,
+        )
+        if eval_gradient:
+            return kernel, np.zeros((kernel.shape[0], kernel.shape[1], 1))
+        return kernel
+    
+    def diag(self, X):
+        return np.ones(X.shape[0])
+    
+    def is_stationary(self):
+        return True
+
+    @property
+    def requires_vector_input(self):
+        return False
+
+# -------------------------------------------------------------------------------------
+# PRECOMPUTED DISTANCES
+# -------------------------------------------------------------------------------------
+
+def precompute_distances(
+    atoms_X: list,
+    atoms_Y: list = None,
+    filename: str = None,
+    **kwargs: dict,
+) -> np.ndarray:
+    """
+    Precompute distances with serial or parallel jobs.
+    """
+    if filename is not None and os.path.exists(filename):
+        # If file is provided and exists, load distances from file.
+        distances = np.load(filename)
+        n_tot = len(atoms_X) if atoms_Y is None else len(atoms_X) + len(atoms_Y)
+        if distances.shape != (n_tot, n_tot):
+            raise ValueError(
+                f"Distances file {filename} has shape {distances.shape}, "
+                f"expected {(n_tot, n_tot)}."
+            )
+    else:
+        # Otherwise, calculate distances matrix.
+        distances = calculate_distances_matrix(
+            atoms_X=atoms_X,
+            atoms_Y=atoms_Y,
+            **kwargs,
+        )
+        # Save the distances matrix to file.
+        if filename is not None:
+            np.save(filename, arr=distances)
+    # Store the graph IDs that map the Atoms objects to the distances matrix.
+    atoms_tot = atoms_X + atoms_Y if atoms_Y is not None else atoms_X
+    for ii, atoms in enumerate(atoms_tot):
+        atoms.info["graph-ID"] = ii
     # Return the distances matrix.
     return distances
 
@@ -262,12 +351,14 @@ class PrecomputedDistancesGraphKernel(Kernel):
         distances: np.ndarray,
         length_scale: float = 10.0,
         length_scale_bounds: tuple = "fixed",
-        **kwargs: dict,
+        kwargs_kernel: dict = {},
+        **kwargs,
     ):
         self.length_scale = length_scale
         self.length_scale_bounds = length_scale_bounds
         self.distances = distances
-        self.kwargs = kwargs
+        self.kwargs_kernel = kwargs_kernel
+        self.kwargs_kernel.update(kwargs)
     
     def __call__(self, X, Y=None, eval_gradient=False):
         if Y is None:
@@ -282,7 +373,7 @@ class PrecomputedDistancesGraphKernel(Kernel):
         kernel = compute_kernel(
             distances=distances,
             length_scale=self.length_scale,
-            **self.kwargs,
+            **self.kwargs_kernel,
         )
         if eval_gradient:
             if self.hyperparameter_length_scale.fixed:
@@ -394,12 +485,12 @@ def get_edge_weights(
 def propagate_features(
     graph: nx.Graph,
     features: np.ndarray,
+    edge_weights: dict = None,
+    edge_weight_dict: dict = {"AA": 0.50, "AS": 1.00, "SS": 0.50},
     use_edge_weights: bool = True,
+    indices: list = None,
     stack_features: bool = True,
     weight_neigh: float = 0.1,
-    edge_weights: dict = None,
-    indices: list = None,
-    edge_weight_dict: dict = {"AA": 0.50, "AS": 1.00, "SS": 0.50},
     n_iter: int = 1,
     nan: float = 0.0,
 ) -> np.ndarray:
@@ -455,12 +546,14 @@ def propagate_features(
 def graph_preprocess(
     atoms_list: list,
     node_weight_dict: dict = {"A0": 1.00, "S1": 0.80, "S2": 0.20},
+    edge_weight_dict: dict = {"AA": 0.50, "AS": 1.00, "SS": 0.50},
     preproc: object = MinMaxScaler(feature_range=(-1, +1)),
     use_edge_weights: bool = True,
     stack_features: bool = True,
     weight_neigh: float = 0.1,
     n_iter: int = 1,
     nan: float = 0.,
+    indices_key: str = "indices_ads",
 ):
     """
     Preprocess the Atoms objects for graph-based machine learning.
@@ -469,24 +562,26 @@ def graph_preprocess(
         graph = atoms_to_nx_graph(atoms=atoms)
         atoms.info["weights"] = get_node_weights(
             graph=graph,
-            indices=atoms.info["indices_ads"],
+            indices=atoms.info[indices_key],
             node_weight_dict=node_weight_dict,
         )
         atoms.info["features"] = propagate_features(
             graph=graph,
             features=atoms.info["features"],
+            edge_weight_dict=edge_weight_dict,
             use_edge_weights=use_edge_weights,
-            indices=atoms.info["indices_ads"],
+            indices=atoms.info[indices_key],
             stack_features=stack_features,
             weight_neigh=weight_neigh,
             n_iter=n_iter,
             nan=nan,
         )
     # Preprocess features.
-    features_all = np.vstack([atoms.info["features"] for atoms in atoms_list])
-    preproc.fit(features_all)
-    for atoms in atoms_list:
-        atoms.info["features"] = preproc.transform(atoms.info["features"])
+    if preproc is not None:
+        features_all = np.vstack([atoms.info["features"] for atoms in atoms_list])
+        preproc.fit(features_all)
+        for atoms in atoms_list:
+            atoms.info["features"] = preproc.transform(atoms.info["features"])
 
 # -------------------------------------------------------------------------------------
 # GRAPH TRAIN
