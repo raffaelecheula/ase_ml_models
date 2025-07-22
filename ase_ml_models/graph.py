@@ -138,7 +138,7 @@ def get_features_and_weights(
     """
     features = [np.array(atoms.info["features"]) for atoms in atoms_list]
     weights = [
-        np.array(atoms.info["weights"]) / np.sum(atoms.info["weights"])
+        np.array(atoms.info["weights"]) / max(np.sum(atoms.info["weights"]), 1)
         for atoms in atoms_list
     ]
     return features, weights
@@ -596,7 +596,9 @@ def graph_train(
     distances: np.ndarray = None,
     **kwargs: dict,
 ):
-    """Train the Graph model."""
+    """
+    Train the Graph model.
+    """
     # Prepare the data.
     X_train = np.array([atoms for atoms in atoms_train], dtype=object)
     y_train = np.array([atoms.info[target] for atoms in atoms_train])
@@ -656,7 +658,9 @@ def graph_predict(
     target: str = "E_form",
     **kwargs: dict,
 ):
-    """Predict the energies using the Graph model."""
+    """
+    Predict the energies using the Graph model.
+    """
     X_test = np.array([atoms for atoms in atoms_test], dtype=object)
     if model.kernel == "precomputed":
         X_test = model.info["kernel"](X=X_test, Y=model.info["X_train"])

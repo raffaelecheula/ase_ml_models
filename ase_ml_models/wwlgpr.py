@@ -15,7 +15,9 @@ def optimize_hyperpars_wwlgpr(
     model: object,
     n_calls: int = 100,
 ):
-    """Set the hyperparameters for the WWL-GPR model."""
+    """
+    Optimize the hyperparameters for the WWL-GPR model.
+    """
     import ray
     from skopt.space import Real, Integer
     from wwlgpr.WWL_GPR import BayOptCv
@@ -110,7 +112,9 @@ def wwlgpr_train(
     n_calls: int = 100,
     **kwargs: dict,
 ):
-    """Train the WWL-GPR model."""
+    """
+    Train the WWL-GPR model.
+    """
     from igraph import Graph
     from wwlgpr.WWL_GPR import BayOptCv
     train_db_graphs = [
@@ -147,7 +151,9 @@ def wwlgpr_predict(
     target: str = "E_form",
     **kwargs: dict,
 ):
-    """Predict the energies using the WWL-GPR model."""
+    """
+    Predict the energies using the WWL-GPR model.
+    """
     from igraph import Graph
     test_graphs = [
         Graph.Adjacency(atoms.info["connectivity"]) for atoms in atoms_test

@@ -22,7 +22,7 @@ def main():
 
     # Read microkinetics results.
     yaml_results = f"results_database_{reaction}.yaml"
-    with open(yaml_results, 'r') as fileobj:
+    with open(yaml_results, "r") as fileobj:
         results_all = yaml.safe_load(fileobj)
     results_DFT = results_all["DFT+DFT"]
     results_BEP = results_all["TSR+BEP"]

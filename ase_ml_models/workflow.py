@@ -16,7 +16,9 @@ def train_model_and_predict(
     atoms_test: list,
     model_params: dict = {},
 ) -> dict:
-    """Train the model and predict the test data."""
+    """
+    Train the model and predict the test data.
+    """
     # Linear scaling models.
     if model_name == "TSR":
         from ase_ml_models.linear import tsr_train, tsr_predict
@@ -76,10 +78,10 @@ def train_model_and_predict(
             **model_params,
         )
         results = {"y_pred": y_pred, "model": model}
-    # Grakel model.
+    # Graph model.
     elif model_name == "Graph":
         from ase_ml_models.graph import graph_train, graph_predict
-        # Train the Grakel model.
+        # Train the Graph model.
         model = graph_train(
             atoms_train=atoms_train,
             **model_params,
@@ -120,7 +122,9 @@ def get_crossvalidator(
     n_splits: int = 5,
     random_state: int = 42,
 ) -> object:
-    """Get cross-validator."""
+    """
+    Get cross-validator.
+    """
     from sklearn.model_selection import (
         KFold,
         StratifiedKFold,
@@ -165,7 +169,9 @@ def crossvalidation(
     n_splits_ensemble: int = None,
     n_resamples: int = 100,
 ) -> dict:
-    """Cross-validation test with uncertainty prediction."""
+    """
+    Cross-validation test with uncertainty prediction.
+    """
     from ase_ml_models.databases import write_atoms_to_db
     from sklearn.utils import resample
     # Get groups and stratify for splits.
@@ -294,7 +300,9 @@ def change_target_energy(
     atoms_test: list,
     target: str = "E_form",
 ):
-    """Change the target energy to formation energy."""
+    """
+    Change the target energy to formation energy.
+    """
     if target == "E_bind":
         y_pred = [yy+atoms.info["E_form_gas"] for yy, atoms in zip(y_pred, atoms_test)]
     elif target == "E_act":
@@ -310,7 +318,9 @@ def get_atoms_ref(
     species_ref: list,
     most_stable: bool = False,
 ) -> list:
-    """Get most stable atoms for reference species."""
+    """
+    Get most stable atoms for reference species.
+    """
     atoms_ref = [
         atoms for atoms in atoms_list if atoms.info["species"] in species_ref
     ]
@@ -329,7 +339,9 @@ def update_ts_atoms(
     db_ads: Database,
     most_stable: bool = True,
 ):
-    """Update transition state atoms with adsorbate data."""
+    """
+    Update transition state atoms with adsorbate data.
+    """
     from ase_ml_models.databases import get_atoms_list_from_db
     for atoms in atoms_list:
         # Get names of reactants and products.
@@ -337,7 +349,7 @@ def update_ts_atoms(
         reactants = reactants.split("+")
         products = products.split("+")
         # Prepare kwargs for the database.
-        kwargs = {"surface": atoms.info['surface']}
+        kwargs = {"surface": atoms.info["surface"]}
         # Calculate energy of the first image.
         e_first = 0.
         for species in reactants:
@@ -380,7 +392,9 @@ def update_ts_atoms(
 def get_prediction_errors(
     results: dict,
 ) -> np.ndarray:
-    """Get prediction errors from the results."""
+    """
+    Get prediction errors from the results.
+    """
     return np.abs(np.array(results["y_pred"])-np.array(results["y_true"]))
 
 # -------------------------------------------------------------------------------------
@@ -392,7 +406,9 @@ def get_means_and_std_bins(
     y_vect: list,
     n_bins: int = 8,
 ) -> list:
-    """Get mean value and standard deviation of bins."""
+    """
+    Get mean value and standard deviation of bins.
+    """
     x_vect = np.array(x_vect)
     y_vect = np.array(y_vect)
     indices = np.argsort(x_vect)
@@ -412,7 +428,9 @@ def calibrate_uncertainty(
     n_bins: int = 8,
     fit_intercept: bool = False,
 ) -> dict:
-    """Calibrate the uncertainty."""
+    """
+    Calibrate the uncertainty.
+    """
     if "y_std" not in results:
         return results
     # Get bins.
@@ -449,7 +467,9 @@ def parity_plot(
     show_errors: bool = True,
     add_violin_plot: bool = True,
 ) -> object:
-    """Parity plot of the results."""
+    """
+    Parity plot of the results.
+    """
     if ax is None:
         import matplotlib.pyplot as plt
         fig, ax = plt.subplots(figsize=(6, 6), dpi=300)
@@ -482,12 +502,12 @@ def parity_plot(
             y=lims[0]+(lims[1]-lims[0])*0.92,
             s=f"MAE = {mae:6.3f} [eV]\nRMSE = {rmse:6.3f} [eV]",
             fontsize=13,
-            ha='center',
-            va='center',
+            ha="center",
+            va="center",
             bbox={
-                "boxstyle": 'round,pad=0.5',
-                "edgecolor": 'black',
-                "facecolor": 'white',
+                "boxstyle": "round,pad=0.5",
+                "edgecolor": "black",
+                "facecolor": "white",
                 "linewidth": 1.5,
             },
         )
@@ -516,7 +536,9 @@ def violin_plot(
     color: str = "crimson",
     show_errors: bool = True,
 ) -> object:
-    """Violin plot of the errors."""
+    """
+    Violin plot of the errors.
+    """
     if ax is None:
         import matplotlib.pyplot as plt
         fig, ax = plt.subplots(figsize=(6, 6), dpi=300)
@@ -545,12 +567,12 @@ def violin_plot(
             y=0.92*ylim[1],
             s=f"MAE = {mae:6.3f} [eV]\nRMSE = {rmse:6.3f} [eV]",
             fontsize=13,
-            ha='center',
-            va='center',
+            ha="center",
+            va="center",
             bbox={
-                "boxstyle": 'round,pad=0.5',
-                "edgecolor": 'black',
-                "facecolor": 'white',
+                "boxstyle": "round,pad=0.5",
+                "edgecolor": "black",
+                "facecolor": "white",
                 "linewidth": 1.5,
             },
         )
@@ -568,7 +590,9 @@ def uncertainty_plot(
     alpha: float = 0.2,
     color: str = "crimson",
 ) -> object:
-    """Uncertainty vs errors plot."""
+    """
+    Uncertainty vs errors plot.
+    """
     if ax is None:
         import matplotlib.pyplot as plt
         fig, ax = plt.subplots(figsize=(6, 6), dpi=300)
@@ -579,7 +603,7 @@ def uncertainty_plot(
         n_bins=n_bins,
     )
     # Plot the data.
-    ax.plot(lims, lims, 'k--')
+    ax.plot(lims, lims, "k--")
     ax.errorbar(
         x=x_means,
         y=y_means,
@@ -614,7 +638,9 @@ def groups_errors_plot(
     replace_dict: dict = {},
     violin_plot: bool = True,
 ) -> object:
-    """ Species errors plot."""
+    """
+    Species errors plot.
+    """
     group_list = [atoms_list[ii].info[key] for ii in results["indices"]]
     if modify_groups is True:
         from ase_ml_models.utilities import modify_name

@@ -27,7 +27,7 @@ def main():
 
     # Read microkinetics results.
     yaml_results = f"results_{task}_{reaction}.yaml"
-    with open(yaml_results, 'r') as fileobj:
+    with open(yaml_results, "r") as fileobj:
         results_all = yaml.safe_load(fileobj)
     results = results_all[models[task]]
     

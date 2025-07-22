@@ -57,7 +57,7 @@ def get_model_parameters(
             # XGBoost model.
             from xgboost import XGBRegressor
             model = XGBRegressor(
-                booster='gbtree',
+                booster="gbtree",
                 n_estimators=7,
                 max_leaves=8,
                 min_child_weight=2.685,

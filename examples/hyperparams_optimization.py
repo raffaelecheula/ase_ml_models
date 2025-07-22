@@ -171,7 +171,7 @@ def main():
         # Load the results.
         results_all = {}
         if os.path.isfile(yaml_results):
-            with open(yaml_results, 'r') as fileobj:
+            with open(yaml_results, "r") as fileobj:
                 results_all = yaml.safe_load(fileobj)
         # Store the results.
         if model not in results_all or results_all[model]["MAE"] > mae:
@@ -181,7 +181,7 @@ def main():
                 "RMSE": rmse,
             }
             results_all[model] = convert_numpy_to_python(results_params)
-            with open(yaml_results, 'w') as fileobj:
+            with open(yaml_results, "w") as fileobj:
                 yaml.dump(
                     data=results_all,
                     stream=fileobj,

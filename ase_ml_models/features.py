@@ -14,7 +14,9 @@ from ase.db.core import Database
 def get_features_const(
     atoms: Atoms,
 ):
-    """Get constant features."""
+    """
+    Get constant features.
+    """
     from mendeleev import element
     features_const = np.zeros((len(atoms), 4))
     for ii, atom in enumerate(atoms):
@@ -41,7 +43,9 @@ def get_features_soap(
     sigma: float = 0.35,
     sparse: bool = False,
 ):
-    """Get SOAP features."""
+    """
+    Get SOAP features.
+    """
     from dscribe.descriptors import SOAP
     atoms_copy = atoms.copy()
     atoms_copy.symbols = ["X" for _ in atoms_copy]
@@ -65,7 +69,9 @@ def get_features_bands(
     pdos_list: list,
     delta_e: float = 0.1,
 ):
-    """Get the features of bands."""
+    """
+    Get the features of bands.
+    """
     i_zero = np.argmin(np.abs(energy))
     i_minus = np.argmin(np.abs(energy+delta_e))
     i_plus = np.argmin(np.abs(energy-delta_e))
@@ -115,21 +121,23 @@ def write_features(
     atoms_list: list,
     filename: str = "features.txt",
 ):
-    """Write features to file."""
-    with open(filename, 'w') as fileobj:
+    """
+    Write features to file.
+    """
+    with open(filename, "w") as fileobj:
         for atoms in atoms_list:
             features = atoms.info["features"]
             features_names = atoms.info["features_names"]
-            print(f'{"symbol":7s}', end='', file=fileobj)
+            print(f'{"symbol":7s}', end="", file=fileobj)
             for ii in range(features.shape[1]):
-                print(f'  {features_names[ii]:11s}', end='', file=fileobj)
-            print('', file=fileobj)
+                print(f"  {features_names[ii]:11s}", end="", file=fileobj)
+            print("", file=fileobj)
             for ii in range(features.shape[0]):
-                print(f'{atoms[ii].symbol:7s}', end='', file=fileobj)
+                print(f"{atoms[ii].symbol:7s}", end="", file=fileobj)
                 for feature in features[ii, :]:
-                    print(f'{feature:+13.4e}', end='', file=fileobj)
-                print('', file=fileobj)
-            print('', file=fileobj)
+                    print(f"{feature:+13.4e}", end="", file=fileobj)
+                print("", file=fileobj)
+            print("", file=fileobj)
 
 # -------------------------------------------------------------------------------------
 # END

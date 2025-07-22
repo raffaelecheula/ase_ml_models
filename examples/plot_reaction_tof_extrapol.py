@@ -23,19 +23,19 @@ def main():
 
     # Read microkinetics results.
     yaml_results = f"results_database_{reaction}.yaml"
-    with open(yaml_results, 'r') as fileobj:
+    with open(yaml_results, "r") as fileobj:
         results_all = yaml.safe_load(fileobj)
     results_DFT = results_all["DFT+DFT"]
     
     # Read microkinetics results extrapolation.
     yaml_results = f"results_extrapol_{reaction}.yaml"
-    with open(yaml_results, 'r') as fileobj:
+    with open(yaml_results, "r") as fileobj:
         results_all = yaml.safe_load(fileobj)
     results_extra = results_all[model]
     
     # Read facets fractions.
     yaml_facet_fracs = "facets_fractions.yaml"
-    with open(yaml_facet_fracs, 'r') as fileobj:
+    with open(yaml_facet_fracs, "r") as fileobj:
         facet_fracs_dict = yaml.safe_load(fileobj)
     
     # DFT data.

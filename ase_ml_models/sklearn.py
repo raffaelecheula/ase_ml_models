@@ -19,6 +19,9 @@ def sklearn_preprocess(
     pipeline: list = [SimpleImputer(), RobustScaler()],
     encode_categorical: bool = True,
 ):
+    """
+    Preprocess the Atoms objects for the Scikit-Learn model.
+    """
     # Get the features of the train set.
     features_names = atoms_list[0].info["features_ave_names"]
     features_proc_names = [
@@ -66,7 +69,9 @@ def sklearn_train(
     target: str = "E_form",
     **kwargs: dict,
 ):
-    """Train a scikit-learn model."""
+    """
+    Train a Scikit-Learn model.
+    """
     # Default model.
     if model is None:
         from sklearn.ensemble import RandomForestRegressor
@@ -90,6 +95,9 @@ def sklearn_predict(
     target: str = "E_form",
     **kwargs: dict,
 ):
+    """
+    Predict energies using the Scikit-Learn model.
+    """
     # Get the features of the test set.
     X_test = np.array([atoms.info["features_mod"] for atoms in atoms_test])
     # Predict the target values.

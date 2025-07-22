@@ -15,7 +15,9 @@ def tsr_prepare(
     species_TSR: list,
     fixed_TSR: dict = {},
 ):
-    """Prepare the data for Linear Scaling Relations."""
+    """
+    Prepare the data for Linear Scaling Relations.
+    """
     # Get reference energies for each surface.
     energies_ref_dict = {}
     for atoms in [
@@ -47,7 +49,9 @@ def get_tsr_data_dict(
     atoms_train: list,
     keys_TSR: list = ["species"],
 ):
-    """Get the dictionary of data for Linear Scaling Relations."""
+    """
+    Get the dictionary of data for Linear Scaling Relations.
+    """
     # Prepare the dictionary.
     tsr_data_dict = {
         " ".join([atoms.info[key] for key in keys_TSR]):
@@ -70,7 +74,9 @@ def get_tsr_data_dict(
 def get_tsr_models_dict(
     tsr_data_dict: dict,
 ):
-    """Train the Linear Scaling Relation models."""
+    """
+    Train the Linear Scaling Relation models.
+    """
     # Train the models.
     models_dict = {}
     for key in tsr_data_dict:
@@ -92,7 +98,9 @@ def tsr_train(
     keys_TSR: list = ["species"],
     **kwargs: dict,
 ):
-    """Get the data and train the Linear Scaling Relation models."""
+    """
+    Get the data and train the Linear Scaling Relation models.
+    """
     tsr_data_dict = get_tsr_data_dict(atoms_train=atoms_train, keys_TSR=keys_TSR)
     models_dict = get_tsr_models_dict(tsr_data_dict=tsr_data_dict)
     return models_dict
@@ -107,7 +115,9 @@ def tsr_predict(
     keys_TSR: list = ["species"],
     **kwargs: dict,
 ):
-    """Predict energies from Linear Scaling Relation models."""
+    """
+    Predict energies from Linear Scaling Relation models.
+    """
     y_pred = []
     for atoms in atoms_test:
         key = " ".join([atoms.info[key] for key in keys_TSR])
@@ -122,7 +132,9 @@ def tsr_predict(
 def get_correlation_heatmap(
     atoms_list: list,
 ):
-    """Get the correlation heatmap of the energies."""
+    """
+    Get the correlation heatmap of the energies.
+    """
     from pandas import DataFrame
     from seaborn import heatmap
     from ase_ml_models.utilities import modify_name
@@ -136,7 +148,7 @@ def get_correlation_heatmap(
         energies_dict[species][surface] = atoms.info["E_form"]
     # Prepare the DataFrame and calculate the correlation.
     df = DataFrame(energies_dict)
-    data_corr = df.corr(method='spearman')
+    data_corr = df.corr(method="spearman")
     # Plot the heatmap.
     ax = heatmap(data=data_corr, vmin=-1.0, vmax=+1.0)
     ax.set_title("Spearman correlation")
@@ -150,7 +162,9 @@ def get_bep_data_dict(
     atoms_train: list,
     keys_BEP: list = ["species"],
 ):
-    """Get the dictionary of data for Brønsted-Evans-Polanyi relations."""
+    """
+    Get the dictionary of data for Brønsted-Evans-Polanyi relations.
+    """
     # Prepare the dictionary.
     bep_data_dict = {
         " ".join([atoms.info[key] for key in keys_BEP]): {
@@ -184,7 +198,9 @@ def get_bep_data_dict(
 def get_bep_models_dict(
     bep_data_dict: dict,
 ):
-    """Train the Brønsted-Evans-Polanyi models."""
+    """
+    Train the Brønsted-Evans-Polanyi models.
+    """
     # Train the models.
     models_dict = {}
     for key in bep_data_dict:
@@ -206,7 +222,9 @@ def bep_train(
     keys_BEP: list = ["species"],
     **kwargs: dict,
 ):
-    """Get the data and train the Brønsted-Evans-Polanyi models."""
+    """
+    Get the data and train the Brønsted-Evans-Polanyi models.
+    """
     bep_data_dict = get_bep_data_dict(atoms_train=atoms_train, keys_BEP=keys_BEP)
     models_dict = get_bep_models_dict(bep_data_dict=bep_data_dict)
     return models_dict
@@ -221,7 +239,9 @@ def bep_predict(
     keys_BEP: list = ["species"],
     **kwargs: dict,
 ):
-    """Predict energies from Brønsted-Evans-Polanyi models."""
+    """
+    Predict energies from Brønsted-Evans-Polanyi models.
+    """
     y_pred = []
     for atoms in atoms_test:
         key = " ".join([atoms.info[key] for key in keys_BEP])

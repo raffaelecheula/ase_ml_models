@@ -30,16 +30,16 @@ def main():
     db_ts_name = f"databases/atoms_reactions_{model_ts}_{task}.db"
     
     # Get materials and Miller indices.
-    with open("materials.yaml", 'r') as fileobj:
+    with open("materials.yaml", "r") as fileobj:
         data = yaml.safe_load(fileobj)
     miller_index_list = data["miller_indices"]
     material_list = data[f"materials_{task}"]
     
     # Reaction mechanism parameters.
-    yaml_file = 'mechanism.yaml'
+    yaml_file = "mechanism.yaml"
     
     # Read the reaction mechanism.
-    with open(yaml_file, 'r') as fileobj:
+    with open(yaml_file, "r") as fileobj:
         mechanism = yaml.safe_load(fileobj)
 
     adsorbates_list = [
@@ -123,7 +123,7 @@ def main():
                     x=material_list,
                     y=y_vect,
                     facecolors=color_dict[miller_index],
-                    edgecolors='black',
+                    edgecolors="black",
                     s=50,
                     label=miller_index,
                 )

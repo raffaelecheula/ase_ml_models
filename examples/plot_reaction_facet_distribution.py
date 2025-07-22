@@ -56,7 +56,7 @@ def main():
     yaml_results = "facets_fractions.yaml"
     # Custom YAML representer for floats.
     def float_representer(dumper, value):
-        return dumper.represent_scalar('tag:yaml.org,2002:float', f"{value:7.4E}")
+        return dumper.represent_scalar("tag:yaml.org,2002:float", f"{value:7.4E}")
     yaml.add_representer(float, float_representer)
     with open(yaml_results, "w") as fileobj:
         yaml.dump(

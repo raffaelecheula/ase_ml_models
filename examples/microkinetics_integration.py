@@ -16,6 +16,7 @@ from ase_cantera_microkinetics.cantera_utils import (
     advance_sim_to_steady_state,
     degree_rate_control,
     molar_balance_of_element,
+    get_std_gibbs_dict,
 )
 from ase_cantera_microkinetics.reaction_mechanism_from_yaml import (
     get_mechanism_from_yaml,
@@ -39,7 +40,7 @@ def main():
     model_reactions = "DFT" # DFT | BEP | SKLearn | WWLGPR
     
     # Get materials and Miller indices.
-    with open("materials.yaml", 'r') as fileobj:
+    with open("materials.yaml", "r") as fileobj:
         data = yaml.safe_load(fileobj)
     miller_index_list = data["miller_indices"]
     material_list = data[f"materials_{task}"]
@@ -49,7 +50,7 @@ def main():
     for material in material_list:
         for miller_index in miller_index_list:
             for e_index in e_index_list:
-                print(f'\nSurface = {material}({miller_index})')
+                print(f"\nSurface = {material}({miller_index})")
                 kinetics_integration(
                     reaction=reaction,
                     model_adsorbates=model_adsorbates,
@@ -61,7 +62,7 @@ def main():
                     calculate_DRC=calculate_DRC,
                 )
     stop = timeit.default_timer()
-    print(f'\nExecution time = {stop-start:6.3} s\n')
+    print(f"\nExecution time = {stop-start:6.3f} [s]\n")
 
 # -------------------------------------------------------------------------------------
 # MAIN
@@ -71,8 +72,8 @@ def kinetics_integration(
     reaction="WGS",
     model_adsorbates="DFT",
     model_reactions="DFT",
-    material='Rh',
-    miller_index='100',
+    material="Rh",
+    miller_index="100",
     e_index=None,
     task="database",
     calculate_DRC=False,
@@ -89,23 +90,23 @@ def kinetics_integration(
     # Set molar fractions of gas species.
     if reaction == "WGS":
         gas_molfracs_inlet = {
-            'CO2': 0.02,
-            'H2': 0.02,
-            'H2O': 0.28,
-            'CO': 0.28,
-            'N2': 0.40,
+            "CO2": 0.02,
+            "H2": 0.02,
+            "H2O": 0.28,
+            "CO": 0.28,
+            "N2": 0.40,
         }
     elif reaction == "RWGS":
         gas_molfracs_inlet = {
-            'CO2': 0.28,
-            'H2': 0.28,
-            'H2O': 0.02,
-            'CO': 0.02,
-            'N2': 0.40,
+            "CO2": 0.28,
+            "H2": 0.28,
+            "H2O": 0.02,
+            "CO": 0.02,
+            "N2": 0.40,
         }
     
     # Set the initial coverages of the free catalytic sites.
-    cat_coverages_inlet = {'(Rh)': 1.0}
+    cat_coverages_inlet = {"(Rh)": 1.0}
 
     # Set number of cstr for the discretization of the pfr.
     n_cstr = 1
@@ -123,7 +124,7 @@ def kinetics_integration(
     cat_sites_tot = cat_site_density*alpha_cat*reactor_volume # [kmol]
 
     # Reaction mechanism parameters.
-    yaml_file = 'mechanism.yaml'
+    yaml_file = "mechanism.yaml"
     db_ads_name = f"databases/atoms_adsorbates_{model_adsorbates}_{task}.db"
     db_ts_name = f"databases/atoms_reactions_{model_reactions}_{task}.db"
     
@@ -177,18 +178,18 @@ def kinetics_integration(
     cstr_volume = cross_section*cstr_length # [m^3]
     cstr_cat_area = alpha_cat*cstr_volume # [m^2]
     mass_flow_rate = vol_flow_rate*gas.density # [kg/s]
-    cstr = ct.IdealGasReactor(gas, energy='off', name='cstr')
+    cstr = ct.IdealGasReactor(gas, energy="off", name="cstr")
     cstr.volume = cstr_volume
     surf = ct.ReactorSurface(cat, cstr, A=cstr_cat_area)
     
     # Add mass flow and pressure controllers.
-    upstream = ct.Reservoir(gas, name='upstream')
+    upstream = ct.Reservoir(gas, name="upstream")
     master = ct.MassFlowController(
         upstream=upstream,
         downstream=cstr,
         mdot=mass_flow_rate,
     )
-    downstream = ct.Reservoir(gas, name='downstream')
+    downstream = ct.Reservoir(gas, name="downstream")
     pcontrol = ct.PressureController(
         upstream=cstr,
         downstream=downstream,
@@ -205,13 +206,13 @@ def kinetics_integration(
     sim.max_time_step = 1.0
 
     # Integrate the plug-flow reactor along the z (reactor length) axis.
-    print('\n- Reactor integration.')
-    gas_array = ct.SolutionArray(gas, extra=['z_reactor'])
-    cat_array = ct.SolutionArray(cat, extra=['z_reactor'])
+    print("\n- Reactor integration.")
+    gas_array = ct.SolutionArray(gas, extra=["z_reactor"])
+    cat_array = ct.SolutionArray(cat, extra=["z_reactor"])
     # Print the header of the table.
-    string = 'distance[m]'.rjust(14)
+    string = "distance[m]".rjust(14)
     for spec in gas.species_names:
-        string += ('x_'+spec+'[-]').rjust(12)
+        string += ("x_"+spec+"[-]").rjust(12)
     print(string)
     # Integrate the reactor.
     for ii in range(n_cstr+1):
@@ -219,9 +220,9 @@ def kinetics_integration(
         gas_array.append(state=gas.state, z_reactor=z_reactor)
         cat_array.append(state=cat.state, z_reactor=z_reactor)
         # Print the state of the reactor.
-        string = f'  {z_reactor:12f}'
+        string = f"  {z_reactor:12f}"
         for spec in gas.species_names:
-            string += f'  {gas[spec].X[0]:10f}'
+            string += f"  {gas[spec].X[0]:10f}"
         print(string)
         # Intergate the microkinetic model.
         if ii < n_cstr:
@@ -232,7 +233,7 @@ def kinetics_integration(
         upstream.syncState()
 
     # Calculate the conversion and the TOF.
-    print('\n- Catalytic activity.')
+    print("\n- Catalytic activity.")
     gas_reac = "CO" if reaction == "WGS" else "CO2"
     gas_prod = "CO2" if reaction == "WGS" else "CO"
     massfracs_in = get_Y_dict(gas_array[0])
@@ -240,13 +241,13 @@ def kinetics_integration(
     conversion_reac = (
         (massfracs_in[gas_reac]-massfracs_out[gas_reac])/massfracs_in[gas_reac]
     )
-    print(f'Conversion of {gas_reac} = {conversion_reac*100:+12.6f} [%]')
+    print(f"Conversion of {gas_reac} = {conversion_reac*100:+12.6f} [%]")
     mol_weight_prod = 44 if reaction == "WGS" else 28 # [kg/kmol]
     mass_flow_prod = (
         (massfracs_out[gas_prod]-massfracs_in[gas_prod])*mass_flow_rate # [kg/s]
     )
     tof_prod = mass_flow_prod/mol_weight_prod/cat_sites_tot # [1/s]
-    print(f'Turnover frequency of {gas_prod} = {tof_prod:+12.6e} [1/s]')
+    print(f"Turnover frequency of {gas_prod} = {tof_prod:+12.6e} [1/s]")
     
     # Get the coverages.
     coverages = {spec: cat[spec].coverages[0] for spec in cat.species_names}
@@ -263,7 +264,7 @@ def kinetics_integration(
     )
     print("\n- Molar balances of elements.")
     for elem, delta_molfract in delta_moles_fracts.items():
-        print(f'Balance of {elem} = {delta_molfract*100:+7.2f} [%]')
+        print(f"Balance of {elem} = {delta_molfract*100:+7.2f} [%]")
     
     # Calculate reaction paths contribution.
     paths_contrib = {}
@@ -277,7 +278,7 @@ def kinetics_integration(
     }
     print("\n- Reaction paths contributions.")
     for name, value in paths_contrib.items():
-        print(f'Contribution of {name:10s} = {value*100:+7.2f} [%]')
+        print(f"Contribution of {name:10s} = {value*100:+7.2f} [%]")
     
     # Calculate the degree of rate control.
     if calculate_DRC is True:
@@ -294,9 +295,9 @@ def kinetics_integration(
         # Print DRC results.
         print("\n- Degree of rate control.")
         for ii, react in enumerate(DRC_dict):
-            print(f' {ii:3d} {react:80s} {DRC_dict[react]:+7.4f}')
+            print(f" {ii:3d} {react:80s} {DRC_dict[react]:+7.4f}")
         sum_DRC = np.sum([DRC_dict[react] for react in DRC_dict])
-        print(f'Sum DRC = {sum_DRC:+7.4f}')
+        print(f"Sum DRC = {sum_DRC:+7.4f}")
 
     # Update names for yaml file.
     coverages_yaml = {}
@@ -314,7 +315,7 @@ def kinetics_integration(
     yaml_results = f"results_{task}_{reaction}.yaml"
     results_all = {}
     if os.path.isfile(yaml_results):
-        with open(yaml_results, 'r') as fileobj:
+        with open(yaml_results, "r") as fileobj:
             results_all = yaml.safe_load(fileobj)
     
     # Models names.
@@ -340,14 +341,14 @@ def kinetics_integration(
     
     # Custom YAML representer for floats.
     def float_representer(dumper, value):
-        return dumper.represent_scalar('tag:yaml.org,2002:float', f"{value:+10.8E}")
+        return dumper.represent_scalar("tag:yaml.org,2002:float", f"{value:+10.8E}")
     yaml.add_representer(float, float_representer)
     # Custom YAML representer for dictionaries.
     def dict_representer(dumper, data):
         return yaml.representer.SafeRepresenter.represent_dict(dumper, data.items())
     yaml.add_representer(dict, dict_representer)
     # Write the reaction mechanism.
-    with open(yaml_results, 'w') as fileobj:
+    with open(yaml_results, "w") as fileobj:
         yaml.dump(
             data=results_all,
             stream=fileobj,
@@ -356,15 +357,176 @@ def kinetics_integration(
             sort_keys=False,
         )
 
+    # Calculate the RDS reaction rate.
+    calculate_rds_reaction_rate(
+        gas_molfracs_inlet=gas_molfracs_inlet,
+        temperature=temperature,
+        pressure=pressure,
+        gas=gas,
+        cat=cat,
+        cat_ts=cat_ts,
+    )
+    calculate_rds_reaction_rate_mikimoto(
+        gas_molfracs_inlet=gas_molfracs_inlet,
+        temperature=temperature,
+        pressure=pressure,
+        e_form_dict=e_form_dict,
+    )
+
+# -------------------------------------------------------------------------------------
+# CALCULATE RDS REACTION RATE
+# -------------------------------------------------------------------------------------
+
+def calculate_rds_reaction_rate(
+    gas_molfracs_inlet,
+    temperature,
+    pressure,
+    gas,
+    cat,
+    cat_ts,
+):
+    """
+    Calculate reaction rate for RWGS with RDS approximation.
+    """
+    # Get the standard Gibbs free energies of formation.
+    g0_form_dict = get_std_gibbs_dict(phase=gas) # [J/kmol]
+    g0_form_dict.update(get_std_gibbs_dict(phase=cat)) # [J/kmol]
+    g0_form_dict.update(get_std_gibbs_dict(phase=cat_ts)) # [J/kmol]
+    
+    # Calculate reduced pressures.
+    p_red = {
+        species: gas_molfracs_inlet[species] * pressure / units.atm
+        for species in gas_molfracs_inlet
+    } # [-]
+    # Calculate the Gibbs free energies of adsorption.
+    g_ads_dict = {
+        "CO(Rh)": g0_form_dict["CO(Rh)"] - g0_form_dict["CO"],
+        "H(Rh)": g0_form_dict["H(Rh)"] - g0_form_dict["H2"] * 0.5,
+        "O(Rh)": g0_form_dict["O(Rh)"] - (g0_form_dict["H2O"] - g0_form_dict["H2"]),
+    } # [J/kmol]
+    # Calculate equilibrium constants.
+    k_eq_dict = {
+        species: np.exp(-g_ads_dict[species] / (units.Rgas * temperature))
+        for species in g_ads_dict
+    } # [-]
+    
+    # Calculate coverage of free sites.
+    coverage_free = 1 / (
+        1 + 
+        k_eq_dict["CO(Rh)"] * p_red["CO"] + 
+        k_eq_dict["H(Rh)"] * p_red["H2"] ** 0.5 +
+        k_eq_dict["O(Rh)"] * p_red["H2O"] / p_red["H2"]
+    )
+    # Calculate coverages of adsorbates on the surface.
+    coverages = {
+        "(Rh)": coverage_free,
+        "CO(Rh)": k_eq_dict["CO(Rh)"] * coverage_free * p_red["CO"],
+        "H(Rh)": k_eq_dict["H(Rh)"] * coverage_free * p_red["H2"] ** 0.5,
+        "O(Rh)": k_eq_dict["O(Rh)"] * coverage_free * p_red["H2O"] / p_red["H2"],
+    }
+    print("\n- Coverages.")
+    for spec, coverage in coverages.items():
+        print(f"{spec.ljust(20)} {coverage:7.4e}")
+    
+    # Calculate activation energy and kinetic constant of RDS.
+    g0_act_RDS = (
+        g0_form_dict["CO2(Rh,Rh) <=> CO(Rh) + O(Rh)"] - g0_form_dict["CO2"]
+    ) # [eV]
+    a_for = units.kB * temperature / units.hP # [1/s]
+    k_for_RDS = a_for * np.exp(-g0_act_RDS / (units.Rgas * temperature)) # [1/s]
+    # Calculate reaction rate.
+    tof_prod = k_for_RDS * p_red["CO2"] * coverage_free ** 2 # [1/s]
+    print(f"Turnover frequency of CO (RDS approximation) = {tof_prod:+12.6e} [1/s]")
+
+# -------------------------------------------------------------------------------------
+# CALCULATE RDS REACTION RATE MIKIMOTO
+# -------------------------------------------------------------------------------------
+
+def calculate_rds_reaction_rate_mikimoto(
+    gas_molfracs_inlet,
+    temperature,
+    pressure,
+    e_form_dict,
+):
+    """
+    Calculate reaction rate for RWGS with RDS approximation.
+    """
+    from mikimoto.microkinetics import Species
+    from mikimoto.thermodynamics import ThermoNASA7
+    
+    # Read the mechanism from the YAML file.
+    mechanism_dict = yaml.safe_load(open("mechanism.yaml", "r"))
+    
+    g0_form_dict = {}
+    for species_type in ["gas", "adsorbates", "reactions"]:
+        for species_data in mechanism_dict[f"species-{species_type}"]:
+            spec = Species(
+                name=species_data["name"],
+                thermo=ThermoNASA7(
+                    temperature=temperature,
+                    coeffs_NASA=species_data["thermo"]["data"][0],
+                ),
+            )
+            if spec.name in e_form_dict:
+                spec.thermo.modify_energy(
+                    e_form_dict[spec.name] * (units.eV/units.molecule)
+                )
+            g0_form_dict[spec.name] = spec.thermo.Gibbs_std
+    
+    # Calculate reduced pressures.
+    p_red = {
+        species: gas_molfracs_inlet[species] * pressure / units.atm
+        for species in gas_molfracs_inlet
+    } # [-]
+    # Calculate the Gibbs free energies of adsorption.
+    g_ads_dict = {
+        "CO(Rh)": g0_form_dict["CO(Rh)"] - g0_form_dict["CO"],
+        "H(Rh)": g0_form_dict["H(Rh)"] - g0_form_dict["H2"] * 0.5,
+        "O(Rh)": g0_form_dict["O(Rh)"] - (g0_form_dict["H2O"] - g0_form_dict["H2"]),
+    } # [J/kmol]
+    # Calculate equilibrium constants.
+    k_eq_dict = {
+        species: np.exp(-g_ads_dict[species] / (units.Rgas * temperature))
+        for species in g_ads_dict
+    } # [-]
+    
+    # Calculate coverage of free sites.
+    coverage_free = 1 / (
+        1 + 
+        k_eq_dict["CO(Rh)"] * p_red["CO"] + 
+        k_eq_dict["H(Rh)"] * p_red["H2"] ** 0.5 +
+        k_eq_dict["O(Rh)"] * p_red["H2O"] / p_red["H2"]
+    )
+    # Calculate coverages of adsorbates on the surface.
+    coverages = {
+        "(Rh)": coverage_free,
+        "CO(Rh)": k_eq_dict["CO(Rh)"] * coverage_free * p_red["CO"],
+        "H(Rh)": k_eq_dict["H(Rh)"] * coverage_free * p_red["H2"] ** 0.5,
+        "O(Rh)": k_eq_dict["O(Rh)"] * coverage_free * p_red["H2O"] / p_red["H2"],
+    }
+    print("\n- Coverages.")
+    for spec, coverage in coverages.items():
+        print(f"{spec.ljust(20)} {coverage:7.4e}")
+    
+    # Calculate activation energy and kinetic constant of RDS.
+    g0_act_RDS = (
+        g0_form_dict["CO2(Rh,Rh) <=> CO(Rh) + O(Rh)"] - g0_form_dict["CO2"]
+    ) # [eV]
+    a_for = units.kB * temperature / units.hP # [1/s]
+    k_for_RDS = a_for * np.exp(-g0_act_RDS / (units.Rgas * temperature)) # [1/s]
+    # Calculate reaction rate.
+    tof_prod = k_for_RDS * p_red["CO2"] * coverage_free ** 2 # [1/s]
+    print(f"Turnover frequency of CO (RDS approximation) = {tof_prod:+12.6e} [1/s]")
+
 # -------------------------------------------------------------------------------------
 # IF NAME MAIN
 # -------------------------------------------------------------------------------------
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     start = timeit.default_timer()
     main()
     stop = timeit.default_timer()
-    print(f'\nExecution time = {stop-start:6.3} s\n')
+    print(f"\nExecution time = {stop-start:6.3f} [s]\n")
 
 # -------------------------------------------------------------------------------------
 # END

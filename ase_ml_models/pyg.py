@@ -185,7 +185,9 @@ def atoms_to_pyg_data(
     atoms: Atoms,
     target: str = "E_form",
 ):
-    """Convert ASE atoms to a PyTorch Geometric Data object."""
+    """
+    Convert ASE atoms to a PyTorch Geometric Data object.
+    """
     features_np = np.nan_to_num(atoms.info["features"], nan=-1.0)
     features = torch.tensor(features_np, dtype=torch.float)
     edges = get_edges_list_from_connectivity(atoms.info["connectivity"])
@@ -201,7 +203,9 @@ def create_pyg_dataset(
     atoms_list: list,
     target: str = "E_form",
 ):
-    """Create a PyTorch Geometric dataset from a list of ASE atoms."""
+    """
+    Create a PyTorch Geometric dataset from a list of ASE atoms.
+    """
     return [atoms_to_pyg_data(atoms=atoms, target=target) for atoms in atoms_list]
 
 # -------------------------------------------------------------------------------------
@@ -218,7 +222,9 @@ def pyg_train(
     kwargs_scheduler: dict = {"factor": 0.5, "patience": 5},
     **kwargs,
 ):
-    """Train a PyTorch Geometric model on a list of ASE atoms."""
+    """
+    Train a PyTorch Geometric model on a list of ASE atoms.
+    """
     # Create dataset and dataloader from ASE atoms list.
     dataset = create_pyg_dataset(atoms_train, target=target)
     loader = DataLoader(dataset=dataset, batch_size=batch_size, shuffle=True)
@@ -273,7 +279,9 @@ def pyg_train_with_early_stopping(
     early_stopping_delta: float = 1e-4,
     save_best_path: str = None,
 ):
-    """Train a PyTorch Geometric model with optional validation and early stopping."""
+    """
+    Train a PyTorch Geometric model with optional validation and early stopping.
+    """
     # Create tran and val datasets and dataloaders from ASE atoms list.
     from sklearn.model_selection import train_test_split
     atoms_train, atoms_val = train_test_split(atoms_train, test_size=val_split)
@@ -339,7 +347,9 @@ def pyg_predict(
     target: str = "E_form",
     **kwargs,
 ):
-    """Predict energies using the PyTorch Geometric model."""
+    """
+    Predict energies using the PyTorch Geometric model.
+    """
     # Create dataset and dataloader from ASE atoms list.
     dataset_test = create_pyg_dataset(atoms_test, target=target)
     loader = DataLoader(dataset=dataset_test, batch_size=1, shuffle=False)

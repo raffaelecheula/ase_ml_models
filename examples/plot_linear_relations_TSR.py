@@ -117,7 +117,7 @@ def main():
                 x=e_tsr_list,
                 y=e_form_list,
                 s=100,
-                edgecolors='black',
+                edgecolors="black",
                 label=key,
                 color=colors_dict[key],
                 zorder=2,
@@ -152,8 +152,8 @@ def main():
                     y=yy,
                     s=modify_name(name),
                     fontsize=8,
-                    ha='center',
-                    va='center',
+                    ha="center",
+                    va="center",
                     zorder=3,
                 )
                 texts.append(text)
@@ -161,7 +161,7 @@ def main():
             texts, patches = adjust_text(
                 texts=texts,
                 expand=(1.3, 1.9),
-                arrowprops={"arrowstyle": '-', "color": 'grey', "alpha": 0.5},
+                arrowprops={"arrowstyle": "-", "color": "grey", "alpha": 0.5},
                 prevent_crossings=False,
                 zorder=1,
                 time_lim=time_lim,

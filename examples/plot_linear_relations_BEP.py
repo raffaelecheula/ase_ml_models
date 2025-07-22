@@ -50,19 +50,19 @@ def main():
 
     # List of species to plot.
     species_list = [
-        'CO2*→CO*+O*',
-        'COH*→CO*+H*',
-        'H2O*→OH*+H*',
-        'H2*→H*+H*',
-        'HCOO*→CO2*+H*',
-        'HCOO*→HCO*+O*',
-        'HCO*→CO*+H*',
-        'OH*→O*+H*',
-        'cCOOH*→CO*+OH*',
-        'cCOOH*→COH*+O*',
-        'tCOOH*→CO2*+H*'
-        #'HCOOH*→HCOO*+H*',
-        #'HCOOH*→cCOOH*+H*',
+        "CO2*→CO*+O*",
+        "COH*→CO*+H*",
+        "H2O*→OH*+H*",
+        "H2*→H*+H*",
+        "HCOO*→CO2*+H*",
+        "HCOO*→HCO*+O*",
+        "HCO*→CO*+H*",
+        "OH*→O*+H*",
+        "cCOOH*→CO*+OH*",
+        "cCOOH*→COH*+O*",
+        "tCOOH*→CO2*+H*"
+        #"HCOOH*→HCOO*+H*",
+        #"HCOOH*→cCOOH*+H*",
     ]
     
     # Get the data for the BEP relations.
@@ -121,7 +121,7 @@ def main():
                 x=deltae_list,
                 y=e_act_list,
                 s=100,
-                edgecolors='black',
+                edgecolors="black",
                 label=label,
                 color=colors_dict[key],
                 zorder=2,
@@ -148,8 +148,8 @@ def main():
                     s=text,
                     fontsize=14 if material_labels is True else 9,
                     color=colors_dict[key],
-                    ha='left',
-                    va='bottom',
+                    ha="left",
+                    va="bottom",
                     zorder=2,
                 )
         # Plot Eact = 0 line.
@@ -162,8 +162,8 @@ def main():
                     y=yy,
                     s=modify_name(name),
                     fontsize=8,
-                    ha='center',
-                    va='center',
+                    ha="center",
+                    va="center",
                     zorder=3,
                 )
                 texts.append(text)
@@ -171,7 +171,7 @@ def main():
             texts, patches = adjust_text(
                 texts=texts,
                 expand=(1.8, 2.0),
-                arrowprops={"arrowstyle": '-', "color": 'grey', "alpha": 0.5},
+                arrowprops={"arrowstyle": "-", "color": "grey", "alpha": 0.5},
                 prevent_crossings=False,
                 zorder=1,
                 time_lim=time_lim,
