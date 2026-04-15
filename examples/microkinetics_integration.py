@@ -9,7 +9,7 @@ import numpy as np
 import yaml
 from ase.db import connect
 from ase_cantera_microkinetics import units
-from ase_cantera_microkinetics.cantera_utils import (
+from ase_cantera_microkinetics.cantera_utilities import (
     get_Y_dict,
     get_X_dict,
     reactions_from_cat_ts,
@@ -18,7 +18,7 @@ from ase_cantera_microkinetics.cantera_utils import (
     molar_balance_of_element,
     get_std_gibbs_dict,
 )
-from ase_cantera_microkinetics.reaction_mechanism_from_yaml import (
+from ase_cantera_microkinetics.ase_utilities import (
     get_mechanism_from_yaml,
     get_e_form_from_ase_atoms,
 )
@@ -149,7 +149,7 @@ def kinetics_integration(
         atoms_ts_list=atoms_ts_list,
         e_form_key="E_form" if e_index is None else "E_form_list",
         e_index=e_index,
-        free_site="(Rh)",
+        free_sites=["(Rh)"],
     )
 
     # Reaction mechanism.

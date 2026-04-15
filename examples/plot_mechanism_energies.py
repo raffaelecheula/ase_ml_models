@@ -24,7 +24,7 @@ def main():
         "extrapol": "WWLGPR+WWLGPR",
     }
 
-    # Ase database names.
+    # ASE database names.
     model_ads, model_ts = models[task].split("+")
     db_ads_name = f"databases/atoms_adsorbates_{model_ads}_{task}.db"
     db_ts_name = f"databases/atoms_reactions_{model_ts}_{task}.db"
@@ -52,7 +52,7 @@ def main():
         if not species["thermo"].get("sticking", False)
     ]
 
-    # Read Ase databases.
+    # Read ASE databases.
     db_ads = connect(db_ads_name)
     db_ts = connect(db_ts_name)
     atoms_ads_list = get_atoms_list_from_db(db_ase=db_ads)

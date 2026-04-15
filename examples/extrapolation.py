@@ -36,7 +36,7 @@ def main():
     # Model selection.
     model_name = "Graph" # TSR | BEP | SKLearn | WWLGPR | Graph | PyG
     model_sklearn = "LightGBM" # RandomForest | XGBoost | LightGBM
-    update_features = True # Update features of TS atoms from an Ase database.
+    update_features = True # Update features of TS atoms from an ASE database.
     model_name_ref = model_name[:] if model_name != "BEP" else "TSR"
     
     # Model parameters.
@@ -50,12 +50,12 @@ def main():
         most_stable=most_stable,
     )
     
-    # Read Ase train database.
+    # Read ASE train database.
     db_train_name = f"databases/atoms_{species_type}_DFT_database.db"
     db_train = connect(db_train_name)
     kwargs = {"most_stable": True} if most_stable is True else {}
     atoms_list = get_atoms_list_from_db(db_ase=db_train, **kwargs)
-    # Read Ase extra database.
+    # Read ASE extra database.
     db_extra_name = f"databases/atoms_{species_type}_DFT_extrapol_empty.db"
     db_extra = connect(db_extra_name)
     atoms_extra = get_atoms_list_from_db(db_ase=db_extra)
@@ -68,7 +68,7 @@ def main():
     else:
         atoms_add = []
     
-    # Update TS features from an Ase database.
+    # Update TS features from an ASE database.
     if update_features is True and species_type == "reactions":
         db_ads_name = f"databases/atoms_adsorbates_{model_name_ref}_extrapol.db"
         db_ads = connect(db_ads_name)
@@ -112,7 +112,7 @@ def main():
         n_splits=n_splits,
         random_state=random_state,
     )
-    # Prepare Ase database.
+    # Prepare ASE database.
     db_model_name = f"databases/atoms_{species_type}_{model_name}_extrapol.db"
     db_model = connect(db_model_name, append=False)
     # Extrapolation.

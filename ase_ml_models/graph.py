@@ -7,7 +7,6 @@ import numpy as np
 import networkx as nx
 from ase import Atoms
 from sklearn.gaussian_process.kernels import Kernel, Hyperparameter
-from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
 from ase_ml_models.workflow import change_target_energy
 
@@ -16,15 +15,18 @@ from ase_ml_models.workflow import change_target_energy
 # -------------------------------------------------------------------------------------
 
 def compute_kernel(
-    distances: float,
+    distances: np.ndarray,
     length_scale: float = 1.0,
     kernel_type: str = "exponential",
-    alpha: float = 1.0,
+    alpha_rq: float = 1.0,
     **kwargs: dict,
-) -> float:
+) -> np.ndarray:
     """
     Compute kernel from distances values.
     """
+    distances = np.asarray(distances, dtype=float)
+    length_scale = max(length_scale, 1e-12)
+    # Get kernel.
     if kernel_type == "exponential":
         return np.exp(-distances / length_scale)
     elif kernel_type == "gaussian":
@@ -40,7 +42,7 @@ def compute_kernel(
         d_rel = distances / length_scale
         return (1 + sqrt5 * d_rel + (5/3) * d_rel**2) * np.exp(-sqrt5 * d_rel)
     elif kernel_type == "rational-quad":
-        return (1 + distances**2 / (2 * alpha * length_scale**2))**(-alpha)
+        return (1 + distances**2 / (2 * alpha_rq * length_scale**2))**(-alpha_rq)
     else:
         raise ValueError(f"Unknown kernel type: {kernel_type}.")
 
@@ -61,6 +63,14 @@ def compute_distance(
     """
     Compute a single distance.
     """
+    features_a = np.asarray(features_a, dtype=float)
+    features_b = np.asarray(features_b, dtype=float)
+    weights_a = np.asarray(weights_a, dtype=float)
+    weights_b = np.asarray(weights_b, dtype=float)
+    # Ensure proper distributions for OT.
+    weights_a = weights_a / np.sum(weights_a)
+    weights_b = weights_b / np.sum(weights_b)
+    # Compute distance.
     if method == "ot-emd2":
         # Wasserstein (earth mover's) distance, from Python Optimal Transport (POT).
         import ot
@@ -90,20 +100,20 @@ def compute_distance(
         # Hungarian algorithm to solve optimal assignment (least-cost matching).
         from scipy.spatial.distance import cdist
         from scipy.optimize import linear_sum_assignment
-        # Solve the optimal assignment problem (Hungarian algorithm).
         dist_matrix = cdist(XA=features_a, XB=features_b, metric="euclidean")
         weight_matrix = np.outer(weights_a, weights_b)
         cost_matrix = dist_matrix * weight_matrix
         row_ind, col_ind = linear_sum_assignment(cost_matrix=cost_matrix)
         dist = (dist_matrix[row_ind, col_ind] * weight_matrix[row_ind, col_ind]).sum()
-        # Find unmatched indices and add their weights to the distance.
+        # Add unmatched penalty.
         dist += c_unmatched * (
-            weights_a[list(set(range(len(features_a)))-set(row_ind))].sum() + 
-            weights_b[list(set(range(len(features_b)))-set(col_ind))].sum()
+            weights_a[list(set(range(len(features_a))) - set(row_ind))].sum() +
+            weights_b[list(set(range(len(features_b))) - set(col_ind))].sum()
         )
     else:
         raise ValueError(f"Unknown method: {method}.")
-    return dist
+    # Return distance.
+    return float(dist)
 
 # -------------------------------------------------------------------------------------
 # COMPUTED DISTANCES TASK
@@ -116,7 +126,6 @@ def compute_distance_task(
     Compute a single distance (task for parallel runs).
     """
     ii, jj, features_a, features_b, weights_a, weights_b, kwargs = args
-    # Calculate Wasserstein distance.
     dist = compute_distance(
         features_a=features_a,
         features_b=features_b,
@@ -131,15 +140,16 @@ def compute_distance_task(
 # -------------------------------------------------------------------------------------
 
 def get_features_and_weights(
-    atoms_list: list,
+    atoms_list: list
 ) -> tuple:
     """
     Get features and weights from Atoms objects.
     """
-    features = [np.array(atoms.info["features"]) for atoms in atoms_list]
+    features = [
+        np.asarray(atoms.info["features"], dtype=float) for atoms in atoms_list
+    ]
     weights = [
-        np.array(atoms.info["weights"]) / max(np.sum(atoms.info["weights"]), 1)
-        for atoms in atoms_list
+        np.asarray(atoms.info["weights"], dtype=float) for atoms in atoms_list
     ]
     return features, weights
 
@@ -185,14 +195,11 @@ def calculate_distances_matrix(
                 weights_Y[jj],
                 kwargs,
             )
-            for ii, jj in [(ii, jj) for ii in range(n_X) for jj in range(n_Y)]
+            for ii in range(n_X)
+            for jj in range(n_Y)
         ]
     if atoms_Y is None or compute_X is True:
-        # Index pairs for distances within atoms_X.
-        # The distance matrix has dimension (n_X, n_X) if atoms_Y is None 
-        # (calculation of distances only within atoms_X). If atoms_Y is not None,
-        # the distances within atoms_X can be calculated as well, resulting in a
-        # symmetric matrix of dimension (n_X+n_Y, n_X+n_Y).
+        # Distances within atoms_X (upper triangular).
         args_list += [
             (
                 ii,
@@ -203,7 +210,8 @@ def calculate_distances_matrix(
                 weights_X[jj],
                 kwargs,
             )
-            for ii, jj in [(ii, jj) for ii in range(n_X) for jj in range(ii+1, n_X)]
+            for ii in range(n_X)
+            for jj in range(ii + 1, n_X)
         ]
     # Default method for parallelization.
     if method is None:
@@ -211,16 +219,18 @@ def calculate_distances_matrix(
     # Set number of jobs for parallelization.
     if n_jobs < 0:
         n_jobs = os.cpu_count()
+    else:
+        n_jobs = min(max(int(n_jobs), 1), os.cpu_count())
     # Prepare tqdm progress bar if needed.
     if with_tqdm is True:
         from tqdm import tqdm
         print(f"Calculating {len(args_list)} distances.")
         args_list = tqdm(args_list, desc="Distances calculation", ncols=100)
-    # Calculate distances with different parallelization methods.
+    # Calculate distances.
     if method == "serial":
         # Compute distances without parallelization.
         results = [compute_distance_task(args) for args in args_list]
-    if method == "multiprocessing":
+    elif method == "multiprocessing":
         # Compute distances with multiprocessing.
         from multiprocessing import Pool
         with Pool(n_jobs) as pool:
@@ -239,17 +249,18 @@ def calculate_distances_matrix(
         compute_distance_ray = ray.remote(compute_distance_task)
         futures = [compute_distance_ray.remote(args) for args in args_list]
         results = ray.get(futures)
-    # Calculate the distances matrix (symmetric, with zeros on the diagonal).
+    else:
+        raise ValueError(f"Unknown parallelization method: {method}.")
+    # Build distances matrix.
     if symmetric is True:
-        distances = np.zeros((n_tot, n_tot))
+        distances = np.zeros((n_tot, n_tot), dtype=float)
         for ii, jj, dist in results:
             distances[ii, jj] = distances[jj, ii] = dist
     else:
-        # Distances between atoms_X and atoms_Y.
-        distances = np.zeros((n_X, n_Y))
+        distances = np.zeros((n_X, n_Y), dtype=float)
         for ii, jj, dist in results:
             distances[ii, jj] = dist
-    # Return the distances matrix.
+    # Return distances matrix.
     return distances
 
 # -------------------------------------------------------------------------------------
@@ -263,13 +274,16 @@ class GraphKernel(Kernel):
     def __init__(
         self,
         length_scale: float = 10.0,
+        length_scale_bounds: tuple = "fixed",
         kwargs_kernel: dict = {},
         **kwargs: dict,
     ):
-        self.length_scale = length_scale
+        # Store constructor params.
+        self.length_scale = float(length_scale)
+        self.length_scale_bounds = length_scale_bounds
         self.kwargs_kernel = kwargs_kernel
         self.kwargs_kernel.update(kwargs)
-    
+
     def __call__(self, X, Y=None, eval_gradient=False):
         # Calculate distances matrix.
         distances = calculate_distances_matrix(
@@ -286,12 +300,78 @@ class GraphKernel(Kernel):
             **self.kwargs_kernel,
         )
         if eval_gradient:
-            return kernel, np.zeros((kernel.shape[0], kernel.shape[1], 1))
+            if self.hyperparameter_length_scale.fixed:
+                return kernel, np.zeros((kernel.shape[0], kernel.shape[1], 1))
+            grad = (kernel * distances) / (max(self.length_scale, 1e-12) ** 2)
+            return kernel, grad[:, :, np.newaxis]
         return kernel
-    
+
+    @property
+    def hyperparameter_length_scale(self):
+        return Hyperparameter("length_scale", "numeric", self.length_scale_bounds)
+
     def diag(self, X):
-        return np.ones(X.shape[0])
-    
+        return np.ones(len(X), dtype=float)
+
+    def is_stationary(self):
+        return True
+
+    @property
+    def requires_vector_input(self):
+        return False
+
+# -------------------------------------------------------------------------------------
+# PRECOMPUTED DISTANCES GRAPH KERNEL
+# -------------------------------------------------------------------------------------
+
+class PrecomputedDistancesGraphKernel(Kernel):
+    """
+    Precomputed distances graph kernel.
+    """
+    def __init__(
+        self,
+        distances: np.ndarray,
+        length_scale: float = 10.0,
+        length_scale_bounds: tuple = "fixed",
+        kwargs_kernel: dict = {},
+        **kwargs,
+    ):
+        # Store constructor params.
+        self.distances = distances
+        self.length_scale = float(length_scale)
+        self.length_scale_bounds = length_scale_bounds
+        self.kwargs_kernel = kwargs_kernel
+        self.kwargs_kernel.update(kwargs)
+
+    def __call__(self, X, Y=None, eval_gradient=False):
+        if Y is None:
+            Y = X
+        if len(X) > 0 and isinstance(X[0], Atoms):
+            X = [atoms.info["graph-ID"] for atoms in X]
+        if len(Y) > 0 and isinstance(Y[0], Atoms):
+            Y = [atoms.info["graph-ID"] for atoms in Y]
+        X = np.asarray(X, dtype=int)
+        Y = np.asarray(Y, dtype=int)
+        distances = self.distances[np.ix_(X, Y)]
+        kernel = compute_kernel(
+            distances=distances,
+            length_scale=self.length_scale,
+            **self.kwargs_kernel,
+        )
+        if eval_gradient:
+            if self.hyperparameter_length_scale.fixed:
+                return kernel, np.zeros((kernel.shape[0], kernel.shape[1], 1))
+            grad = (kernel * distances) / self.length_scale ** 2
+            return kernel, grad[:, :, np.newaxis]
+        return kernel
+
+    @property
+    def hyperparameter_length_scale(self):
+        return Hyperparameter("length_scale", "numeric", self.length_scale_bounds)
+
+    def diag(self, X):
+        return np.ones(len(X), dtype=float)
+
     def is_stationary(self):
         return True
 
@@ -331,71 +411,12 @@ def precompute_distances(
         # Save the distances matrix to file.
         if filename is not None:
             np.save(filename, arr=distances)
-    # Store the graph IDs that map the Atoms objects to the distances matrix.
+    # Assign graph IDs to atoms.
     atoms_tot = atoms_X + atoms_Y if atoms_Y is not None else atoms_X
     for ii, atoms in enumerate(atoms_tot):
         atoms.info["graph-ID"] = ii
-    # Return the distances matrix.
+    # Return distances matrix.
     return distances
-
-# -------------------------------------------------------------------------------------
-# PRECOMPUTED DISTANCES GRAPH KERNEL
-# -------------------------------------------------------------------------------------
-
-class PrecomputedDistancesGraphKernel(Kernel):
-    """
-    Precomputed distances graph kernel.
-    """
-    def __init__(
-        self,
-        distances: np.ndarray,
-        length_scale: float = 10.0,
-        length_scale_bounds: tuple = "fixed",
-        kwargs_kernel: dict = {},
-        **kwargs,
-    ):
-        self.length_scale = length_scale
-        self.length_scale_bounds = length_scale_bounds
-        self.distances = distances
-        self.kwargs_kernel = kwargs_kernel
-        self.kwargs_kernel.update(kwargs)
-    
-    def __call__(self, X, Y=None, eval_gradient=False):
-        if Y is None:
-            Y = X
-        if isinstance(X[0], Atoms):
-            X = [atoms.info["graph-ID"] for atoms in X]
-        if isinstance(Y[0], Atoms):
-            Y = [atoms.info["graph-ID"] for atoms in Y]
-        X = np.asarray(X, dtype=int)
-        Y = np.asarray(Y, dtype=int)
-        distances = self.distances[np.ix_(X, Y)]
-        kernel = compute_kernel(
-            distances=distances,
-            length_scale=self.length_scale,
-            **self.kwargs_kernel,
-        )
-        if eval_gradient:
-            if self.hyperparameter_length_scale.fixed:
-                return kernel, np.zeros((kernel.shape[0], kernel.shape[1], 1))
-            else:
-                grad = (kernel * distances) / (self.length_scale**2)
-                return kernel, grad[:, :, np.newaxis]
-        return kernel
-    
-    @property
-    def hyperparameter_length_scale(self):
-        return Hyperparameter("length_scale", "numeric", self.length_scale_bounds)
-    
-    def diag(self, X):
-        return np.ones(X.shape[0])
-    
-    def is_stationary(self):
-        return True
-
-    @property
-    def requires_vector_input(self):
-        return False
 
 # -------------------------------------------------------------------------------------
 # ATOMS TO NETWORKX GRAPH
@@ -422,7 +443,7 @@ def atoms_to_nx_graph(
 def get_node_weights(
     graph: nx.Graph,
     indices: list = None,
-    node_weight_dict: dict = {"A0": 1.00, "S1": 0.80, "S2": 0.20},
+    node_weight_dict: dict = None,
 ) -> np.ndarray:
     """
     Calculate node weights, according to `node_weight_dict`. For adsorbates, the
@@ -431,23 +452,29 @@ def get_node_weights(
     corresponding weight value, where `A0` corresponds to adsorbate atoms, `S1` to 
     atoms in the first shell, and `S2` to atoms in the second shell.
     """
+    if node_weight_dict is None:
+        node_weight_dict = {"A0": 1.00, "S1": 0.80, "S2": 0.20}
+    n_nodes = len(graph.nodes())
+    # If no indices are provided, assign equal weights to all nodes.
     if indices is None:
-        weights = np.ones(len(graph.nodes()))
-    else:
-        weight_keys = sorted(node_weight_dict.keys(), key=lambda x: int(x[1:]))
-        node_weight_list = [node_weight_dict[ii] for ii in weight_keys]
-        indices_assigned = []
-        weights = np.zeros(len(graph.nodes()))
-        indices_ii = [int(ii) for ii in indices]
-        ii_max = len(node_weight_list)-1
-        for ii in range(ii_max):
-            weights[indices_ii] = node_weight_list[ii]
-            indices_assigned += indices_ii
-            indices_ii = [
-                jj for kk in indices_ii for jj in graph.neighbors(kk)
-                if jj not in indices_assigned
-            ]
-        weights[indices_ii] = node_weight_list[ii_max]
+        weights = np.ones(n_nodes, dtype=float)
+        return weights
+    # Assign weights.
+    weight_keys = sorted(node_weight_dict.keys(), key=lambda x: int(x[1:]))
+    node_weight_list = [node_weight_dict[ii] for ii in weight_keys]
+    indices_assigned = []
+    weights = np.zeros(n_nodes, dtype=float)
+    indices_ii = [int(ii) for ii in indices]
+    ii_max = len(node_weight_list) - 1
+    for ii in range(ii_max):
+        weights[indices_ii] = node_weight_list[ii]
+        indices_assigned += indices_ii
+        indices_ii = [
+            jj for kk in indices_ii for jj in graph.neighbors(kk)
+            if jj not in indices_assigned
+        ]
+    weights[indices_ii] = node_weight_list[ii_max]
+    # Return weights.
     return weights
 
 # -------------------------------------------------------------------------------------
@@ -457,7 +484,7 @@ def get_node_weights(
 def get_edge_weights(
     graph: nx.Graph,
     indices: list = None,
-    edge_weight_dict: dict = {"AA": 0.50, "AS": 1.00, "SS": 0.50},
+    edge_weight_dict: dict = None,
 ) -> dict:
     """
     Get edges weights, according to `edge_weight_dict`. For adsorbates, the 
@@ -467,15 +494,21 @@ def get_edge_weights(
     atoms, `AS` to edges between adsorbate and surface, and `SS` to edges between 
     surface atoms.
     """
+    if edge_weight_dict is None:
+        edge_weight_dict = {"AA": 0.50, "AS": 1.00, "SS": 0.50}
     edges = list(graph.edges())
+    # If no indices are provided, assign 1 to all edges.
     if indices is None:
-        edge_weights = {tuple(sorted(ee)): 1.0 for ee in graph.edges()}
-    else:
-        edge_weight_list = [edge_weight_dict[ii] for ii in ["SS", "AS", "AA"]]
-        edge_weights = {
-            tuple(sorted(ee)): edge_weight_list[len(set(ee) & set(indices))]
-            for ee in edges
-        }
+        edge_weights = {tuple(sorted(ee)): 1.0 for ee in edges}
+        return edge_weights
+    # Assign weights.
+    indices_set = set(indices)
+    edge_weight_list = [edge_weight_dict[ii] for ii in ["SS", "AS", "AA"]]
+    edge_weights = {
+        tuple(sorted(ee)): edge_weight_list[len(set(ee) & indices_set)]
+        for ee in edges
+    }
+    # Return edge weights.
     return edge_weights
 
 # -------------------------------------------------------------------------------------
@@ -486,7 +519,7 @@ def propagate_features(
     graph: nx.Graph,
     features: np.ndarray,
     edge_weights: dict = None,
-    edge_weight_dict: dict = {"AA": 0.50, "AS": 1.00, "SS": 0.50},
+    edge_weight_dict: dict = None,
     use_edge_weights: bool = True,
     indices: list = None,
     stack_features: bool = True,
@@ -497,6 +530,8 @@ def propagate_features(
     """
     Propagate features through the graph with a Weisfeiler-Lehman scheme.
     """
+    if edge_weight_dict is None:
+        edge_weight_dict = {"AA": 0.50, "AS": 1.00, "SS": 0.50}
     # If using edge weights and none are provided, compute them.
     if use_edge_weights is True and edge_weights is None:
         edge_weights = get_edge_weights(
@@ -505,11 +540,11 @@ def propagate_features(
             edge_weight_dict=edge_weight_dict,
         )
     # Replace any NaNs in the features with a fixed value.
-    features = np.nan_to_num(features.copy(), nan=nan)
+    features = np.nan_to_num(np.asarray(features, dtype=float).copy(), nan=nan)
     # Run Weisfeiler-Lehman propagation for n_iter steps.
     for jj in range(n_iter):
         # Initialize the propagated features array.
-        features_neighbors = np.zeros_like(features)
+        features_neigh = np.zeros_like(features)
         # Loop over all nodes.
         for ii in range(len(graph.nodes())):
             neighbors = list(graph.neighbors(ii))
@@ -517,26 +552,28 @@ def propagate_features(
                 # If using edge weights, retrieve and normalize them.
                 if use_edge_weights is True:
                     weights = np.array(
-                        [edge_weights[tuple(sorted((ii, jj)))] for jj in neighbors]
+                        [edge_weights[tuple(sorted((ii, kk)))] for kk in neighbors],
+                        dtype=float,
                     )
                 else:
                     weights = None
                 # Compute (weighted) average of neighbor features.
-                features_neighbors[ii] = np.average(
+                features_neigh[ii] = np.average(
                     features[neighbors],
                     weights=weights,
                     axis=0,
                 )
             else:
                 # If no neighbors, keep the original feature.
-                features_neighbors[ii] = features[ii].copy()
+                features_neigh[ii] = features[ii].copy()
         # Combine original and neighbor features.
         if stack_features:
             # Concatenate propagated features to the original feature set.
-            features = np.hstack([features, features_neighbors])
+            features = np.hstack([features, features_neigh])
         else:
             # Update features with a blend of original and neighbor-averaged features.
-            features = (1-weight_neigh) * features + weight_neigh * features_neighbors
+            features = (1 - weight_neigh) * features + weight_neigh * features_neigh
+    # Return propagated features.
     return features
 
 # -------------------------------------------------------------------------------------
@@ -545,19 +582,37 @@ def propagate_features(
 
 def graph_preprocess(
     atoms_list: list,
-    node_weight_dict: dict = {"A0": 1.00, "S1": 0.80, "S2": 0.20},
-    edge_weight_dict: dict = {"AA": 0.50, "AS": 1.00, "SS": 0.50},
-    preproc: object = MinMaxScaler(feature_range=(-1, +1)),
+    node_weight_dict: dict = None,
+    edge_weight_dict: dict = None,
+    feature_weight_list: list = None,
+    feature_weight_dict: dict = None,
+    impute_features: bool = False,
+    normalize_features: bool = True,
+    scale_features: bool = True,
     use_edge_weights: bool = True,
     stack_features: bool = True,
     weight_neigh: float = 0.1,
     n_iter: int = 1,
-    nan: float = 0.,
+    nan: float = 0.0,
     indices_key: str = "indices_ads",
 ):
     """
     Preprocess the Atoms objects for graph-based machine learning.
     """
+    from sklearn.preprocessing import MinMaxScaler, Normalizer
+    from sklearn.impute import SimpleImputer
+    if node_weight_dict is None:
+        node_weight_dict = {"A0": 1.00, "S1": 0.80, "S2": 0.20}
+    if edge_weight_dict is None:
+        edge_weight_dict = {"AA": 0.50, "AS": 1.00, "SS": 0.50}
+    # Apply imputer.
+    if impute_features is True:
+        imputer = SimpleImputer()
+        features_all = np.vstack([atoms.info["features"] for atoms in atoms_list])
+        imputer.fit(features_all)
+        for atoms in atoms_list:
+            atoms.info["features"] = imputer.transform(atoms.info["features"])
+    # Compute graphs, node weights, and propagate features.
     for atoms in atoms_list:
         graph = atoms_to_nx_graph(atoms=atoms)
         atoms.info["weights"] = get_node_weights(
@@ -576,12 +631,56 @@ def graph_preprocess(
             n_iter=n_iter,
             nan=nan,
         )
-    # Preprocess features.
-    if preproc is not None:
+        atoms.info["features_names"] = list(atoms.info["features_names"])
+        if stack_features is True:
+            atoms.info["features_names"] += [
+                f"{name}_neigh" for name in atoms.info["features_names"]
+            ]
+    # Apply normalizer.
+    if normalize_features is True:
+        normalizer = Normalizer()
         features_all = np.vstack([atoms.info["features"] for atoms in atoms_list])
-        preproc.fit(features_all)
+        normalizer.fit(features_all)
         for atoms in atoms_list:
-            atoms.info["features"] = preproc.transform(atoms.info["features"])
+            atoms.info["features"] = normalizer.transform(atoms.info["features"])
+    # Apply scaler.
+    if scale_features is True:
+        scaler = MinMaxScaler(feature_range=(0, 1))
+        features_all = np.vstack([atoms.info["features"] for atoms in atoms_list])
+        scaler.fit(features_all)
+        for atoms in atoms_list:
+            atoms.info["features"] = scaler.transform(atoms.info["features"])
+    # Get feature weights from dictionary.
+    if feature_weight_dict is not None:
+        feature_weight_list = get_feature_weights_from_dict(
+            features_names=atoms_list[0].info["features_names"],
+            feature_weight_dict=feature_weight_dict,
+        )
+    # Apply feature weights.
+    if feature_weight_list is not None:
+        sqrt_weights = np.sqrt(np.asarray(feature_weight_list))
+        for atoms in atoms_list:
+            atoms.info["features"] = atoms.info["features"] * sqrt_weights
+
+# -------------------------------------------------------------------------------------
+# GET FEATURE WEIGHTS FROM DICTIONARY
+# -------------------------------------------------------------------------------------
+
+def get_feature_weights_from_dict(
+    features_names: list,
+    feature_weight_dict: dict,
+) -> list:
+    """
+    Get feature weights from a dictionary mapping feature names to weights.
+    """
+    feature_weight_array = np.ones(len(features_names), dtype=float)
+    # Assign weights.
+    for ii, name in enumerate(features_names):
+        for pattern, weight in feature_weight_dict.items():
+            if pattern in name:
+                feature_weight_array[ii] *= weight
+    # Return feature weights list.
+    return list(feature_weight_array)
 
 # -------------------------------------------------------------------------------------
 # GRAPH TRAIN
@@ -590,8 +689,8 @@ def graph_preprocess(
 def graph_train(
     atoms_train: list,
     target: str = "E_form",
-    kwargs_model: dict = {},
-    kwargs_kernel: dict = {},
+    kwargs_model: dict = None,
+    kwargs_kernel: dict = None,
     model_name: str = "GPR",
     distances: np.ndarray = None,
     **kwargs: dict,
@@ -599,9 +698,10 @@ def graph_train(
     """
     Train the Graph model.
     """
-    # Prepare the data.
+    kwargs_model = {} if kwargs_model is None else dict(kwargs_model)
+    kwargs_kernel = {} if kwargs_kernel is None else dict(kwargs_kernel)
     X_train = np.array([atoms for atoms in atoms_train], dtype=object)
-    y_train = np.array([atoms.info[target] for atoms in atoms_train])
+    y_train = np.array([atoms.info[target] for atoms in atoms_train], dtype=float)
     # Graph kernel.
     if distances is not None:
         kernel = PrecomputedDistancesGraphKernel(distances=distances, **kwargs_kernel)
@@ -613,7 +713,7 @@ def graph_train(
         # Gaussian Process Regression model.
         model = GaussianProcessRegressor(
             kernel=kernel,
-            alpha=kwargs_model.pop("alpha", 0.001),
+            alpha=kwargs_model.pop("alpha", 1e-3),
             copy_X_train=kwargs_model.pop("copy_X_train", False),
             normalize_y=kwargs_model.pop("normalize_y", True),
             **kwargs_model,
@@ -623,7 +723,7 @@ def graph_train(
         # Kernel Ridge Regression model.
         model = KernelRidge(
             kernel="precomputed",
-            alpha=kwargs_model.pop("alpha", 0.001),
+            alpha=kwargs_model.pop("alpha", 1e-3),
             **kwargs_model,
         )
         # Store kernel and training data in the model.

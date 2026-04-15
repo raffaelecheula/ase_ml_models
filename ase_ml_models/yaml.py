@@ -11,7 +11,7 @@ from ase import Atoms
 # -------------------------------------------------------------------------------------
 
 def customize_yaml(
-    float_format: str = "{:10.8E}",
+    float_format: str = "{:+10.8E}",
 ):
     """
     Customize YAML serialization for specific data types.
@@ -26,6 +26,31 @@ def customize_yaml(
     def dict_representer(dumper, data):
         return yaml.representer.SafeRepresenter.represent_dict(dumper, data.items())
     yaml.add_representer(dict, dict_representer)
+
+# -------------------------------------------------------------------------------------
+# GET CUSTOM DUMPER
+# -------------------------------------------------------------------------------------
+
+def get_custom_dumper(
+    float_format: str = "{:+10.8E}",
+):
+    """
+    Get a custom YAML dumper class with specific representers.
+    """
+    class CustomDumper(yaml.SafeDumper):
+        pass
+    # Custom YAML representer for floats.
+    def float_representer(dumper, value):
+        return dumper.represent_scalar(
+            "tag:yaml.org,2002:float", float_format.format(value)
+        )
+    CustomDumper.add_representer(float, float_representer)
+    # Custom YAML representer for dictionaries.
+    def dict_representer(dumper, data):
+        return dumper.represent_dict(dumper, data.items())
+    CustomDumper.add_representer(dict, dict_representer)
+    # Return the custom dumper.
+    return CustomDumper
 
 # -------------------------------------------------------------------------------------
 # CONVERT NUMPY TO PYTHON
@@ -57,7 +82,7 @@ def write_to_yaml(
     default_flow_style: bool = None,
     width: int = 1000,
     sort_keys: bool = False,
-    float_format: str = "{:10.8E}",
+    float_format: str = "{:+10.8E}",
 ):
     """ 
     Write data to a YAML file.
@@ -83,7 +108,7 @@ def write_atoms_to_yaml(
     default_flow_style: bool = None,
     width: int = 1000,
     sort_keys: bool = False,
-    float_format: str = "{:10.8E}",
+    float_format: str = "{:+10.8E}",
 ):
     """
     Write a list of ASE Atoms objects to a YAML file.

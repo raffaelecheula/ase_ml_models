@@ -44,7 +44,7 @@ def sklearn_preprocess(
             if isinstance(feature, str)
         ])
     # Encode categorical features.
-    if encode_categorical:
+    if encode_categorical and len(features_categ[0]) > 0:
         enc = OneHotEncoder()
         features_categ = enc.fit_transform(features_categ)
         features = np.hstack([features, features_categ.toarray()])

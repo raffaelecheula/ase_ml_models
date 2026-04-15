@@ -19,7 +19,7 @@ def main():
     species_type = "adsorbates" # adsorbates | reactions
     kwargs = {}
     
-    # Read Ase database.
+    # Read ASE database.
     db_ase_name = f"databases/atoms_{species_type}_DFT_database.db"
     db_ase = connect(db_ase_name)
     atoms_list = get_atoms_list_from_db(db_ase=db_ase, **kwargs)

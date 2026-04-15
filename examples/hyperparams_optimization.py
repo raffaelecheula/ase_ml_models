@@ -43,7 +43,7 @@ def main():
     # Model selection.
     model_name = "WWLGPR" # TSR | BEP | SKLearn | WWLGPR | Graph | PyG
     model_sklearn = "LightGBM" # RandomForest | XGBoost | LightGBM
-    update_features = False # Update features of TS atoms from an Ase database.
+    update_features = False # Update features of TS atoms from an ASE database.
     model_name_ref = model_name[:]
     
     # Model parameters.
@@ -51,7 +51,7 @@ def main():
     target = "E_act" if species_type == "reactions" else "E_form"
     model_params = {"target": target}
     
-    # Read Ase database.
+    # Read ASE database.
     db_ase_name = f"databases/atoms_{species_type}_DFT_database.db"
     db_ase = connect(db_ase_name)
     kwargs = {"most_stable": True} if most_stable is True else {}
@@ -60,7 +60,7 @@ def main():
     random.Random(random_state).shuffle(atoms_list)
     atoms_list = atoms_list[:int(fraction_data*len(atoms_list))]
     
-    # Update TS features from an Ase database.
+    # Update TS features from an ASE database.
     if update_features is True and species_type == "reactions":
         db_ads_name = f"databases/atoms_adsorbates_{model_name_ref}_database.db"
         db_ads = connect(db_ads_name)

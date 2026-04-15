@@ -18,16 +18,19 @@ def write_atoms_list_to_db(
     fill_stress: bool = False,
     fill_magmom: bool = False,
 ):
-    """Write list of ase Atoms to ase database."""
-    for atoms in atoms_list:
-        write_atoms_to_db(
-            atoms=atoms,
-            db_ase=db_ase,
-            keys_store=keys_store,
-            keys_match=keys_match,
-            fill_stress=fill_stress,
-            fill_magmom=fill_magmom,
-        )
+    """
+    Write list of ASE Atoms to ASE database.
+    """
+    with db_ase:
+        for atoms in atoms_list:
+            write_atoms_to_db(
+                atoms=atoms,
+                db_ase=db_ase,
+                keys_store=keys_store,
+                keys_match=keys_match,
+                fill_stress=fill_stress,
+                fill_magmom=fill_magmom,
+            )
 
 # -------------------------------------------------------------------------------------
 # WRITE ATOMS TO DB
@@ -41,7 +44,9 @@ def write_atoms_to_db(
     fill_stress: bool = False,
     fill_magmom: bool = False,
 ):
-    """Write ase Atoms to ase database."""
+    """
+    Write ASE Atoms to ASE database.
+    """
     # Fill with zeros stress and magmoms.
     if fill_stress and "stress" not in atoms.calc.results:
         atoms.calc.results["stress"] = np.zeros(6)
@@ -70,7 +75,9 @@ def get_atoms_list_from_db(
     selection: str = "",
     **kwargs,
 ) -> list:
-    """Get list of ase Atoms from ase database."""
+    """
+    Get list of ASE Atoms from ASE database.
+    """
     atoms_list = []
     for id in [aa.id for aa in db_ase.select(selection=selection, **kwargs)]:
         atoms_row = db_ase.get(id=id)
@@ -90,7 +97,9 @@ def get_atoms_from_db(
     none_ok: bool = False,
     **kwargs,
 ) -> Atoms:
-    """Get ase Atoms from ase database."""
+    """
+    Get ASE Atoms from ASE database.
+    """
     atoms_list = get_atoms_list_from_db(db_ase=db_ase, selection=selection, **kwargs)
     if none_ok is True and len(atoms_list) < 1:
         return None
@@ -108,7 +117,9 @@ def get_atoms_most_stable(
     atoms_list: list,
     keys_most_stable: list,
 ) -> list:
-    """Get most stable atoms between the ones with the same keys."""
+    """
+    Get most stable atoms between the ones with the same keys.
+    """
     stable_dict = {}
     for atoms in atoms_list:
         key = " ".join([atoms.info[key] for key in keys_most_stable])

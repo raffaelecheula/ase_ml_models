@@ -317,7 +317,7 @@ def modify_name(
     # Add subscripts to numbers in chemical formulas.
     name_new = ""
     for ii, char in enumerate(name):
-        if char.isdecimal() and ii > 0 and name[ii-1].isalpha():
+        if char.isdecimal() and ii > 0 and name[ii - 1].isalpha():
             name_new += f"$_{char}$"
         else:
             name_new += char

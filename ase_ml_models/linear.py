@@ -245,7 +245,10 @@ def bep_predict(
     y_pred = []
     for atoms in atoms_test:
         key = " ".join([atoms.info[key] for key in keys_BEP])
-        deltae = atoms.info["ΔE_react"]
+        if "ΔE_react" in atoms.info:
+            deltae = atoms.info["ΔE_react"]
+        else:
+            deltae = atoms.info["E_last"] - atoms.info["E_first"]
         e_act = models_dict[key].predict(np.array(deltae).reshape(-1, 1))[0]
         e_form = atoms.info["E_first"] + e_act
         y_pred.append(e_form)

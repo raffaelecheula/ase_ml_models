@@ -24,11 +24,13 @@ def get_model_parameters(
     # TSR models.
     if model_name == "TSR":
         # TSR model parameters.
-        fixed_TSR = {spec: ["CO*"] for spec in ["CO2*", "COH*", "cCOOH*", "HCO*"]}
-        fixed_TSR.update({spec: ["O*"] for spec in ["HCOO*", "OH*", "H2O*"]})
-        fixed_TSR.update({spec: ["H*"] for spec in ["H2*"]})
+        fixed_TSR = {
+            **{spec: ["CO*"] for spec in ["CO2*", "COH*", "cCOOH*", "HCO*"]},
+            **{spec: ["O*"] for spec in ["HCOO*", "OH*", "H2O*"]},
+            **{spec: ["H*"] for spec in ["H2*"]},
+        }
         model_params = {
-            "keys_TSR": ["species"] if most_stable else ["species", "site"],
+            "keys_TSR": ["species"], #if most_stable else ["species", "site"],
             "fixed_TSR": fixed_TSR,
         }
 
@@ -137,6 +139,13 @@ def get_model_parameters(
             "model_name": "KRR",
             "kwargs_kernel": {"length_scale": 30},
             "kwargs_model": {"alpha": 1e-4},
+        }
+    
+    # PyG model.
+    if model_name == "PyG":
+        # Graph model parameters.
+        model_params = {
+            "target": target,
         }
     
     return model_params

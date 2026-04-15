@@ -112,6 +112,24 @@ def train_model_and_predict(
     return results
 
 # -------------------------------------------------------------------------------------
+# IDENTITY 1 FOLD
+# -------------------------------------------------------------------------------------
+
+class Identity1Fold:
+    """
+    Cross-validator that does not split the data, but returns a single fold where 
+    train indices = test indices = all indices (for calculating training errors).
+    """
+    def __init__(self, n_splits: int = 1, **kwargs: dict):
+        assert n_splits == 1, "Identity1Fold only supports n_splits=1."
+    
+    def get_n_splits(self, X: list = None, y: list = None, groups: list = None):
+        return 1
+    
+    def split(self, X: list, y: list = None, groups: list = None):
+        yield range(len(X)), range(len(X))
+
+# -------------------------------------------------------------------------------------
 # GET CROSSVALIDATOR
 # -------------------------------------------------------------------------------------
 
@@ -121,6 +139,7 @@ def get_crossvalidator(
     group: bool = None,
     n_splits: int = 5,
     random_state: int = 42,
+    shuffle: bool = True
 ) -> object:
     """
     Get cross-validator.
@@ -132,15 +151,17 @@ def get_crossvalidator(
         StratifiedGroupKFold,
     )
     # Prepare the cross-validation parameters.
-    kwargs = {"shuffle": True, "random_state": random_state}
+    kwargs = {"shuffle": shuffle, "random_state": random_state}
     # Check the cross-validation type and create the object.
-    if crossval_name == "KFold" or [group, stratified] == [False]*2:
+    if n_splits == 1:
+        crossval = Identity1Fold(n_splits=n_splits)
+    elif crossval_name == "KFold" or [group, stratified] == [False] * 2:
         crossval = KFold(n_splits=n_splits, **kwargs)
     elif crossval_name == "StratifiedKFold" or [group, stratified] == [False, True]:
         crossval = StratifiedKFold(n_splits=n_splits, **kwargs)
     elif crossval_name == "GroupKFold" or [group, stratified] == [True, False]:
         crossval = GroupKFold(n_splits=n_splits)
-    elif crossval_name == "StratifiedGroupKFold" or [group, stratified] == [True]*2:
+    elif crossval_name == "StratifiedGroupKFold" or [group, stratified] == [True] * 2:
         crossval = StratifiedGroupKFold(n_splits=n_splits, **kwargs)
     else:
         raise ValueError("Wrong cross-validation parameters.")
@@ -162,12 +183,13 @@ def crossvalidation(
     exclude_add: bool = True,
     db_model: Database = None,
     print_mean_errors: bool = True,
-    print_error_thr: float = np.inf, # [eV]
+    print_error_thr: float = None, # [eV]
     model_params: dict = {},
     ensemble: bool = False,
     resampling: bool = False,
     n_splits_ensemble: int = None,
     n_resamples: int = 100,
+    db_kwargs: dict = {},
 ) -> dict:
     """
     Cross-validation test with uncertainty prediction.
@@ -179,6 +201,8 @@ def crossvalidation(
     stratify = [str(atoms.info[key_stratify]) for atoms in atoms_list]
     # Names of atoms added.
     atoms_add_names = [atoms.info[key_name] for atoms in atoms_add]
+    # Threshold for prediction errors.
+    print_error_thr = np.inf if print_error_thr is None else print_error_thr
     # Initialize cross-validation.
     y_true_all = []
     y_pred_all = []
@@ -252,10 +276,10 @@ def crossvalidation(
                 atoms_copy.info = atoms.info.copy()
                 atoms_copy.info["E_form"] = e_form
                 atoms_copy.info["E_form_list"] = e_form_list
-                atoms_copy.info["E_form_dft"] = e_form_dft
-                write_atoms_to_db(atoms=atoms_copy, db_ase=db_model)
+                atoms_copy.info["E_form_DFT"] = e_form_dft
+                write_atoms_to_db(atoms=atoms_copy, db_ase=db_model, **db_kwargs)
             # Print high-error structures.
-            if np.abs(e_form-e_form_dft) > print_error_thr:
+            if np.abs(e_form - e_form_dft) > print_error_thr:
                 print(f"{atoms.info[key_name]:70s} {e_form:+7.3f} {e_form_dft:+7.3f}")
         # Discard excluded atoms from results.
         y_true_ok = [yy for kk, yy in enumerate(y_true) if kk not in excluded]
@@ -283,6 +307,8 @@ def crossvalidation(
         print(f"RMSE: {rmse:6.4f} [eV]")
     # Return the results.
     results = {
+        "MAE": float(mae),
+        "RMSE": float(rmse),
         "y_true": y_true_all,
         "y_pred": y_pred_all,
         "indices": indices_all,
@@ -304,9 +330,13 @@ def change_target_energy(
     Change the target energy to formation energy.
     """
     if target == "E_bind":
-        y_pred = [yy+atoms.info["E_form_gas"] for yy, atoms in zip(y_pred, atoms_test)]
+        y_pred = [
+            yy + atoms.info["E_form_gas"] for yy, atoms in zip(y_pred, atoms_test)
+        ]
     elif target == "E_act":
-        y_pred = [yy+atoms.info["E_first"] for yy, atoms in zip(y_pred, atoms_test)]
+        y_pred = [
+            yy + atoms.info["E_first"] for yy, atoms in zip(y_pred, atoms_test)
+        ]
     return [float(yy) for yy in y_pred]
 
 # -------------------------------------------------------------------------------------
@@ -337,53 +367,78 @@ def get_atoms_ref(
 def update_ts_atoms(
     atoms_list: list,
     db_ads: Database,
-    most_stable: bool = True,
+    e_form_dict: dict = {},
+    reactants_products_dict: dict = None,
+    key_arrow: str = "→",
+    key_plus: str = "+",
+    key_or: str = " / ",
+    features_key_dict: dict = None,
 ):
     """
     Update transition state atoms with adsorbate data.
     """
     from ase_ml_models.databases import get_atoms_list_from_db
+    # Get dictionary of reactants and products for each species.
+    if reactants_products_dict is None:
+        reactants_products_dict = {}
+        for atoms in atoms_list:
+            species = atoms.info["species"]
+            reactants, products = atoms.info["species"].split(key_arrow)
+            reactants = reactants.split(key_plus)
+            products = products.split(key_plus)
+            reactants_products_dict[species] = [reactants, products]
+    # 
     for atoms in atoms_list:
         # Get names of reactants and products.
-        reactants, products = atoms.info["species"].split("→")
-        reactants = reactants.split("+")
-        products = products.split("+")
+        reactants, products = reactants_products_dict[atoms.info["species"]]
         # Prepare kwargs for the database.
         kwargs = {"surface": atoms.info["surface"]}
         # Calculate energy of the first image.
         e_first = 0.
         for species in reactants:
-            kwargs.update({"species": species})
-            atoms_ads_list = get_atoms_list_from_db(db_ase=db_ads, **kwargs)
+            species_list = species.split(key_or) if key_or in species else [species]
+            atoms_ads_list = []
+            for species_ii in species_list:
+                kwargs.update({"species": species_ii})
+                atoms_ads_list += get_atoms_list_from_db(db_ase=db_ads, **kwargs)
             if len(atoms_ads_list) > 0:
                 atoms_ads = sorted(atoms_ads_list, key=lambda x: x.info["E_form"])[0]
                 e_first += atoms_ads.info["E_form"]
+            elif species in e_form_dict:
+                e_first += e_form_dict[species]
             else:
-                print(species)
+                print(f"Warning: {species} not found!")
         # Calculate energy of the last image.
         e_last = 0.
         for species in products:
-            kwargs.update({"species": species})
-            atoms_ads_list = get_atoms_list_from_db(db_ase=db_ads, **kwargs)
+            species_list = species.split(key_or) if key_or in species else [species]
+            atoms_ads_list = []
+            for species_ii in species_list:
+                kwargs.update({"species": species_ii})
+                atoms_ads_list += get_atoms_list_from_db(db_ase=db_ads, **kwargs)
             if len(atoms_ads_list) > 0:
                 atoms_ads = sorted(atoms_ads_list, key=lambda x: x.info["E_form"])[0]
                 e_last += atoms_ads.info["E_form"]
+            elif species in e_form_dict:
+                e_last += e_form_dict[species]
             else:
-                print(species)
+                print(f"Warning: {species} not found!")
         # Update the atoms info.
         atoms.info["E_first"] = e_first
         atoms.info["E_last"] = e_last
         atoms.info["ΔE_react"] = e_last - e_first
         # Update features.
         for key in ["E_first", "E_last", "ΔE_react"]:
-            index = atoms.info["features_names"].index(key)
+            feat = features_key_dict[key] if features_key_dict is not None else key
+            index = atoms.info["features_names"].index(feat)
             features = np.array(atoms.info["features"])
             features[:, index] = [atoms.info[key]] * len(atoms)
             atoms.info["features"] = features
         # Update average features.
-        for key in ["E_first", "E_last", "ΔE_react"]:
-            index = atoms.info["features_ave_names"].index(key)
-            atoms.info["features_ave"][index] = atoms.info[key]
+        #for key in ["E_first", "E_last", "ΔE_react"]:
+        #    feat = features_key_dict[key] if features_key_dict is not None else key
+        #    index = atoms.info["features_ave_names"].index(feat)
+        #    atoms.info["features_ave"][index] = atoms.info[key]
 
 # -------------------------------------------------------------------------------------
 # GET PREDICTION ERRORS
@@ -395,7 +450,7 @@ def get_prediction_errors(
     """
     Get prediction errors from the results.
     """
-    return np.abs(np.array(results["y_pred"])-np.array(results["y_true"]))
+    return np.abs(np.array(results["y_pred"]) - np.array(results["y_true"]))
 
 # -------------------------------------------------------------------------------------
 # GET MEANS AND STD BINS
@@ -444,9 +499,9 @@ def calibrate_uncertainty(
     regr = LinearRegression(fit_intercept=fit_intercept)
     regr.fit(np.array(x_means).reshape(-1, 1), np.array(y_means))
     m_line, a_line = regr.coef_[0], regr.intercept_
-    y_means = [(yy-a_line)/m_line for yy in y_means]
-    y_stds = [yy/m_line for yy in y_stds]
-    results["y_std"] = [(yy-a_line)/m_line for yy in results["y_std"]]
+    y_means = [(yy - a_line) / m_line for yy in y_means]
+    y_stds = [yy / m_line for yy in y_stds]
+    results["y_std"] = [(yy - a_line) / m_line for yy in results["y_std"]]
     if fit_intercept is True:
         results["y_std"] = [yy if yy > 0. else 0. for yy in results["y_std"]]
     # Return the calibrate uncertainty.
@@ -462,7 +517,7 @@ def parity_plot(
     results: dict,
     ax: object = None,
     lims: list = [-3, +5],
-    alpha: float = 0.20,
+    alpha: float = 0.50,
     color: str = "crimson",
     show_errors: bool = True,
     add_violin_plot: bool = True,
@@ -498,8 +553,8 @@ def parity_plot(
         mae = mean_absolute_error(y_true, y_pred)
         rmse = mean_squared_error(y_true, y_pred, squared=False)
         ax.text(
-            x=lims[0]+(lims[1]-lims[0])*0.23,
-            y=lims[0]+(lims[1]-lims[0])*0.92,
+            x=lims[0] + (lims[1] - lims[0]) * 0.23,
+            y=lims[0] + (lims[1] - lims[0]) * 0.92,
             s=f"MAE = {mae:6.3f} [eV]\nRMSE = {rmse:6.3f} [eV]",
             fontsize=13,
             ha="center",
@@ -513,7 +568,7 @@ def parity_plot(
         )
     # Add violin plot.
     if add_violin_plot is True:
-        inset_ax = fig.add_axes([0.70, 0.13, 0.18, 0.25])
+        inset_ax = fig.add_axes([0.70, 0.14, 0.17, 0.25])
         violin_plot(
             results=results,
             ax=inset_ax,
@@ -650,10 +705,11 @@ def groups_errors_plot(
         if group not in group_dict:
             group_dict[group] = []
         group_dict[group].append(y_err)
+    group_dict = {key: group_dict[key] for key in sorted(group_dict.keys())}
     # Plot the data.
     if ax is None:
         import matplotlib.pyplot as plt
-        fig, ax = plt.subplots(figsize=(len(group_dict)*0.45+1.5, 6), dpi=300)
+        fig, ax = plt.subplots(figsize=(len(group_dict) * 0.45 + 1.5, 6), dpi=300)
     if violin_plot is True:
         violins = ax.violinplot(
             dataset=group_dict.values(),
@@ -666,7 +722,7 @@ def groups_errors_plot(
             violin.set_alpha(alpha)
             violin.set_edgecolor("k")
         ax.errorbar(
-            x=range(1, len(group_dict)+1),
+            x=range(1, len(group_dict) + 1),
             y=[np.mean(ii) for ii in group_dict.values()],
             yerr=[np.std(ii) for ii in group_dict.values()],
             ms=5,
@@ -676,14 +732,14 @@ def groups_errors_plot(
         )
     else:
         ax.bar(
-            x=range(1, len(group_dict)+1),
+            x=range(1, len(group_dict) + 1),
             height=[np.mean(ii) for ii in group_dict.values()],
             yerr=[np.std(ii) for ii in group_dict.values()],
             color=color,
             alpha=alpha,
             capsize=5,
         )
-    ax.set_xticks(list(range(1, len(group_dict)+1)))
+    ax.set_xticks(list(range(1, len(group_dict) + 1)))
     ax.set_xticklabels(group_dict.keys(), rotation=90, ha="center")
     ax.set_ylabel("Errors [eV]", fontdict={"fontsize": 16})
     ax.set_ylim(*ylim)
@@ -691,6 +747,27 @@ def groups_errors_plot(
     for spine in ax.spines.values():
         spine.set_linewidth(1.5)
     return ax
+
+# -------------------------------------------------------------------------------------
+# PRINT RESULTS YAML
+# -------------------------------------------------------------------------------------
+
+def print_results_yaml(
+    results: dict,
+    keys: list = ["y_true", "y_pred"],
+    filename: str = "results.yaml",
+) -> None:
+    """
+    Print results dictionary to a yaml file.
+    """
+    import yaml
+    from ase_ml_models.yaml import convert_numpy_to_python, customize_yaml
+    # Prepare results for yaml.
+    results_yaml = {key: results[key] for key in keys}
+    # Write to yaml file.
+    customize_yaml(float_format="{:+0.8f}")
+    with open(filename, "w", encoding="utf-8") as fileobj:
+        yaml.dump(convert_numpy_to_python(results_yaml), fileobj)
 
 # -------------------------------------------------------------------------------------
 # END

@@ -6,6 +6,6 @@ setup(
     url="https://github.com/raffaelecheula/ase_ml_models.git",
     author="Raffaele Cheula",
     author_email="cheula.raffaele@gmail.com",
-    long_description=open('README.md', 'r').read(),
-    license='GPL-3.0',
+    long_description=open("README.md", "r").read(),
+    license="GPL-3.0",
 )

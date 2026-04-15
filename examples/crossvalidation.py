@@ -19,6 +19,7 @@ from ase_ml_models.workflow import (
     violin_plot,
     groups_errors_plot,
     uncertainty_plot,
+    print_results_yaml,
 )
 
 import warnings
@@ -43,14 +44,14 @@ def main():
     ensemble = False # Use the cross-validator to get an ensemble of models.
     resampling = False # Use resampling (bootstrapping) to get an ensemble of models.
     n_resamples = 100 # Number of samples for resampling.
-    store_data = False # Store the data in an Ase database.
+    store_data = False # Store the data in an ASE database.
     add_ref_atoms = False # Add reference atoms to the training set.
     exclude_add = True # Exclude the reference atoms in the errors evaluation.
     
     # Model selection.
-    model_name = "Graph" # TSR | BEP | SKLearn | WWLGPR | Graph | PyG
+    model_name = "SKLearn" # TSR | BEP | SKLearn | WWLGPR | Graph | PyG
     model_sklearn = "LightGBM" # RandomForest | XGBoost | LightGBM
-    update_features = False # Update features of TS atoms from an Ase database.
+    update_features = False # Update features of TS atoms from an ASE database.
     model_name_ref = model_name[:] if model_name != "BEP" else "TSR"
     
     # Model parameters.
@@ -64,7 +65,7 @@ def main():
         most_stable=most_stable,
     )
     
-    # Read Ase database.
+    # Read ASE database.
     db_ase_name = f"databases/atoms_{species_type}_DFT_database.db"
     db_ase = connect(db_ase_name)
     kwargs = {"most_stable": True} if most_stable is True else {}
@@ -75,7 +76,7 @@ def main():
     else:
         atoms_add = []
     
-    # Update TS features from an Ase database.
+    # Update TS features from an ASE database.
     if update_features is True and species_type == "reactions":
         db_ads_name = f"databases/atoms_adsorbates_{model_name_ref}_database.db"
         db_ads = connect(db_ads_name)
@@ -98,12 +99,12 @@ def main():
             node_weight_dict=node_weight_dict,
             edge_weight_dict=edge_weight_dict,
         )
-        filename = "distances.npy"
+        filename = None # "distances.npy"
         distances = precompute_distances(atoms_X=atoms_list, filename=filename)
         model_params.update({"distances": distances})
     
-    # Print number of atoms.
-    print(f"n atoms: {len(atoms_list)}")
+    # Print number of data.
+    print(f"n data: {len(atoms_list)}")
     print(f"n added: {len(atoms_add)}")
     
     # Initialize cross-validation.
@@ -113,7 +114,7 @@ def main():
         n_splits=n_splits,
         random_state=random_state,
     )
-    # Prepare Ase database.
+    # Prepare ASE database.
     db_model_name = f"databases/atoms_{species_type}_{model_name}_database.db"
     db_model = connect(db_model_name, append=False) if store_data else None
     # Cross-validation.
@@ -137,6 +138,7 @@ def main():
     plot_species = False # Violin plots of errors distinguished by species.
     plot_materials = False # Violin plots of errors distinguished by material.
     plot_uncertainty = True # Parity plot of uncertainty vs error.
+    print_yaml = False # Print results to a yaml file.
     # Colors and names for plots.
     color_dict = {
         "TSR": "darkcyan",
@@ -175,6 +177,13 @@ def main():
         results = calibrate_uncertainty(results=results, fit_intercept=False)
         ax = uncertainty_plot(results=results, color=color)
         plt.savefig(f"{dirname}/uncertainty_{species_type}_{model}.png")
+    # Save results to a yaml file.
+    if print_yaml is True:
+        print_results_yaml(
+            results=results,
+            keys=["MAE", "RMSE", "y_true", "y_pred"],
+            filename=f"results_{task}_{species_type}_{model}.yaml",
+        )
 
 # -------------------------------------------------------------------------------------
 # IF NAME MAIN

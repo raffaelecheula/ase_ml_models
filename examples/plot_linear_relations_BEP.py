@@ -21,7 +21,7 @@ from ase_ml_models.utilities import modify_name
 
 def main():
 
-    # Ase database.
+    # ASE database.
     db_ase_name = "databases/atoms_reactions_DFT_database.db"
     most_stable = True
     material_labels = False
@@ -29,12 +29,12 @@ def main():
     legend = False
     update_features = False
     
-    # Read Ase database.
+    # Read ASE database.
     db_ase = connect(db_ase_name)
     kwargs = {"most_stable": True} if most_stable is True else {}
     atoms_list = get_atoms_list_from_db(db_ase=db_ase, **kwargs)
 
-    # Update features from an Ase database.
+    # Update features from an ASE database.
     if update_features:
         db_ads_name = "databases/atoms_adsorbates_DFT_database.db"
         db_ads = connect(db_ads_name)

@@ -13,21 +13,37 @@ from ase.db.core import Database
 
 def get_features_const(
     atoms: Atoms,
+    features_dict: dict = None,
+    features_names: list = ["Eaff", "Eneg", "Ipot", "Drad"],
 ):
     """
     Get constant features.
     """
     from mendeleev import element
-    features_const = np.zeros((len(atoms), 4))
-    for ii, atom in enumerate(atoms):
-        elem = element(atom.symbol)
-        features_const[ii, 0] = elem.electron_affinity
-        features_const[ii, 1] = elem.en_pauling
-        features_const[ii, 2] = elem.ionenergies[1]
-        if elem.metallic_radius:
-            features_const[ii, 3] = elem.metallic_radius * 0.01
-        else:
-            features_const[ii, 3] = np.nan
+    # Get chemical symbols.
+    symbol_list = sorted(set(atoms.get_chemical_symbols()))
+    # Get features dict.
+    if features_dict is None:
+        features_dict = {}
+    for symbol in [symbol for symbol in symbol_list if symbol not in features_dict]:
+        elem = element(symbol)
+        features = []
+        if "Eaff" in features_names:
+            features.append(elem.electron_affinity)
+        if "Eneg" in features_names:
+            features.append(elem.en_pauling)
+        if "Ipot" in features_names:
+            features.append(elem.ionenergies[1] if 1 in elem.ionenergies else np.nan)
+        if "Drad" in features_names:
+            features.append(
+                elem.metallic_radius * 0.01 if elem.metallic_radius else np.nan
+            )
+        features_dict[symbol] = features
+    # Get constant features.
+    features_const = np.zeros((len(atoms), len(features_names)))
+    for ii, aa in enumerate(atoms):
+        features_const[ii] = features_dict[aa.symbol]
+    # Return constant features.
     return features_const
 
 # -------------------------------------------------------------------------------------
@@ -37,27 +53,41 @@ def get_features_const(
 def get_features_soap(
     atoms: Atoms,
     periodic: bool = True,
-    rcut: int = 3,
-    nmax: int = 4,
-    lmax: int = 6,
+    r_cut: int = 3,
+    n_max: int = 4,
+    l_max: int = 6,
     sigma: float = 0.35,
     sparse: bool = False,
 ):
     """
     Get SOAP features.
     """
+    from inspect import signature
     from dscribe.descriptors import SOAP
     atoms_copy = atoms.copy()
     atoms_copy.symbols = ["X" for _ in atoms_copy]
-    soap_desc = SOAP(
-        species=["X"],
-        periodic=periodic,
-        rcut=rcut,
-        nmax=nmax,
-        lmax=lmax,
-        sigma=sigma,
-        sparse=sparse,
-    )
+    # Create SOAP descriptor.
+    if "r_cut" in signature(SOAP.__init__).parameters:
+        soap_desc = SOAP(
+            species=["X"],
+            periodic=periodic,
+            r_cut=r_cut,
+            n_max=n_max,
+            l_max=l_max,
+            sigma=sigma,
+            sparse=sparse,
+        )
+    else:
+        soap_desc = SOAP(
+            species=["X"],
+            periodic=periodic,
+            rcut=r_cut,
+            nmax=n_max,
+            lmax=l_max,
+            sigma=sigma,
+            sparse=sparse,
+        )
+    # Return SOAP features.
     return soap_desc.create(atoms_copy)
 
 # -------------------------------------------------------------------------------------
