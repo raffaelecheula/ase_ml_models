@@ -291,8 +291,8 @@ def crossvalidation(
             mae = mean_absolute_error(y_true_ok, y_pred_ok)
             rmse = mean_squared_error(y_true_ok, y_pred_ok, squared=False)
             print(f"---- Split {ii+1} ----")
-            print(f"MAE:  {mae:6.4f} [eV]")
-            print(f"RMSE: {rmse:6.4f} [eV]")
+            print(f"MAE:  {mae:6.4f} eV")
+            print(f"RMSE: {rmse:6.4f} eV")
         # Store the results in lists.
         y_true_all += y_true_ok
         y_pred_all += y_pred_ok
@@ -303,15 +303,15 @@ def crossvalidation(
         mae = mean_absolute_error(y_true_all, y_pred_all)
         rmse = mean_squared_error(y_true_all, y_pred_all, squared=False)
         print("----  Total  ----")
-        print(f"MAE:  {mae:6.4f} [eV]")
-        print(f"RMSE: {rmse:6.4f} [eV]")
+        print(f"MAE:  {mae:6.4f} eV")
+        print(f"RMSE: {rmse:6.4f} eV")
     # Return the results.
     results = {
         "MAE": float(mae),
         "RMSE": float(rmse),
         "y_true": y_true_all,
         "y_pred": y_pred_all,
-        "indices": indices_all,
+        "indices": [int(ii) for ii in indices_all],
     }
     if ensemble is True or resampling is True:
         results["y_std"] = y_std_all
@@ -527,22 +527,29 @@ def parity_plot(
     """
     if ax is None:
         import matplotlib.pyplot as plt
-        fig, ax = plt.subplots(figsize=(6, 6), dpi=300)
+        fig, ax = plt.subplots(figsize=(5, 5), dpi=300)
+        plt.subplots_adjust(left=0.15, right=0.95, top=0.95, bottom=0.12)
     ax.plot(lims, lims, "k--")
     ax.errorbar(
         x=results["y_true"],
         y=results["y_pred"],
         yerr=results["y_std"] if "y_std" in results else None,
-        ms=5,
-        fmt="o",
-        alpha=alpha,
-        color=color,
+        fmt="none",
         capsize=3,
+        color="black",
+    )
+    ax.scatter(
+        x=results["y_true"],
+        y=results["y_pred"],
+        s=50,
+        c=color,
+        alpha=alpha,
+        edgecolors="k",
     )
     ax.set_xlim(*lims)
     ax.set_ylim(*lims)
-    ax.set_xlabel("E$_{DFT}$ [eV]", fontdict={"fontsize": 16})
-    ax.set_ylabel("E$_{model}$ [eV]", fontdict={"fontsize": 16})
+    ax.set_xlabel(r"$E_{\mathregular{DFT}}$ [eV]", fontsize=16)
+    ax.set_ylabel(r"$E_{\mathregular{model}}$ [eV]", fontsize=16)
     ax.tick_params(labelsize=13, width=1.5, length=6, direction="inout")
     for spine in ax.spines.values():
         spine.set_linewidth(1.5)
@@ -553,9 +560,9 @@ def parity_plot(
         mae = mean_absolute_error(y_true, y_pred)
         rmse = mean_squared_error(y_true, y_pred, squared=False)
         ax.text(
-            x=lims[0] + (lims[1] - lims[0]) * 0.23,
+            x=lims[0] + (lims[1] - lims[0]) * 0.26,
             y=lims[0] + (lims[1] - lims[0]) * 0.92,
-            s=f"MAE = {mae:6.3f} [eV]\nRMSE = {rmse:6.3f} [eV]",
+            s=f"MAE = {mae:6.3f} eV\nRMSE = {rmse:6.3f} eV",
             fontsize=13,
             ha="center",
             va="center",
@@ -568,13 +575,13 @@ def parity_plot(
         )
     # Add violin plot.
     if add_violin_plot is True:
-        inset_ax = fig.add_axes([0.70, 0.14, 0.17, 0.25])
+        inset_ax = fig.add_axes([0.76, 0.15, 0.17, 0.25])
         violin_plot(
             results=results,
             ax=inset_ax,
             ylim=[0., +1.5],
             alpha=0.8,
-            color=color,
+            color=color if isinstance(color, str) else "gray",
             show_errors=False,
         )
     return ax
@@ -620,7 +627,7 @@ def violin_plot(
         ax.text(
             x=0.85,
             y=0.92*ylim[1],
-            s=f"MAE = {mae:6.3f} [eV]\nRMSE = {rmse:6.3f} [eV]",
+            s=f"MAE = {mae:6.3f} eV\nRMSE = {rmse:6.3f} eV",
             fontsize=13,
             ha="center",
             va="center",
@@ -684,32 +691,40 @@ def uncertainty_plot(
 def groups_errors_plot(
     results: dict,
     atoms_list: list,
+    group_list: list = None,
     key: str = "species",
     ax: object = None,
-    ylim: list = [0.0, 1.5],
+    percentile: bool = True,
+    ylim: list = [0.0, 1.2],
     alpha: float = 0.8,
+    kwargs_xticks: dict = {"rotation": 90., "ha": "center"},
     color: str = "crimson",
     modify_groups: bool = True,
-    replace_dict: dict = {},
+    kwargs_name: dict = {},
     violin_plot: bool = True,
 ) -> object:
     """
-    Species errors plot.
+    Groups errors plot.
     """
-    group_list = [atoms_list[ii].info[key] for ii in results["indices"]]
-    if modify_groups is True:
-        from ase_ml_models.utilities import modify_name
-        group_list = [modify_name(name, replace_dict) for name in group_list]
+    if group_list is None:
+        group_list = [atoms_list[ii].info[key] for ii in results["indices"]]
     group_dict = {}
     for group, y_err in zip(group_list, get_prediction_errors(results=results)):
         if group not in group_dict:
             group_dict[group] = []
         group_dict[group].append(y_err)
     group_dict = {key: group_dict[key] for key in sorted(group_dict.keys())}
+    # Get the color for each group.
+    if isinstance(color, dict):
+        color = [color[key] for key in group_dict.keys()]
+    # Modify group names if needed.
+    if modify_groups is True:
+        from ase_ml_models.utilities import modify_name
+        group_names = [modify_name(name, **kwargs_name) for name in group_dict.keys()]
     # Plot the data.
     if ax is None:
         import matplotlib.pyplot as plt
-        fig, ax = plt.subplots(figsize=(len(group_dict) * 0.45 + 1.5, 6), dpi=300)
+        fig, ax = plt.subplots(figsize=(len(group_dict) * 0.3 + 3, 5), dpi=300)
     if violin_plot is True:
         violins = ax.violinplot(
             dataset=group_dict.values(),
@@ -717,14 +732,24 @@ def groups_errors_plot(
             showmedians=False,
             showextrema=False,
         )["bodies"]
-        for violin in violins:
-            violin.set_facecolor(color)
+        for ii, violin in enumerate(violins):
+            violin.set_facecolor(color[ii] if isinstance(color, list) else color)
             violin.set_alpha(alpha)
             violin.set_edgecolor("k")
+        if percentile is True:
+            values = list(group_dict.values())
+            yy = [np.median(vv) for vv in values]
+            yerr = [
+                [np.median(vv) - np.percentile(vv, 16) for vv in values],
+                [np.percentile(vv, 84) - np.median(vv) for vv in values]
+            ]
+        else:
+            yy = [np.mean(ii) for ii in group_dict.values()]
+            yerr = [np.std(ii) for ii in group_dict.values()]
         ax.errorbar(
             x=range(1, len(group_dict) + 1),
-            y=[np.mean(ii) for ii in group_dict.values()],
-            yerr=[np.std(ii) for ii in group_dict.values()],
+            y=yy,
+            yerr=yerr,
             ms=5,
             fmt="o",
             color="black",
@@ -740,7 +765,7 @@ def groups_errors_plot(
             capsize=5,
         )
     ax.set_xticks(list(range(1, len(group_dict) + 1)))
-    ax.set_xticklabels(group_dict.keys(), rotation=90, ha="center")
+    ax.set_xticklabels(group_names, **kwargs_xticks)
     ax.set_ylabel("Errors [eV]", fontdict={"fontsize": 16})
     ax.set_ylim(*ylim)
     ax.tick_params(labelsize=13, width=1.5, length=6, direction="inout")

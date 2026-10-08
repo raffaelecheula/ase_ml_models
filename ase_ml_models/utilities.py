@@ -309,18 +309,22 @@ def plot_connectivity(
 
 def modify_name(
     name: str,
+    subscript_numbers: bool = True,
     replace_dict: dict = {},
 ) -> str:
     """
-    Modify the species name.
+    Modify the name.
     """
     # Add subscripts to numbers in chemical formulas.
-    name_new = ""
-    for ii, char in enumerate(name):
-        if char.isdecimal() and ii > 0 and name[ii - 1].isalpha():
-            name_new += f"$_{char}$"
-        else:
-            name_new += char
+    if subscript_numbers is True:
+        name_new = ""
+        for ii, char in enumerate(name):
+            if char.isdecimal() and ii > 0 and name[ii - 1].isalpha():
+                name_new += f"$_{char}$"
+            else:
+                name_new += char
+    else:
+        name_new = name[:]
     # Replace characters.
     for key in replace_dict:
         name_new = name_new.replace(key, replace_dict[key])
